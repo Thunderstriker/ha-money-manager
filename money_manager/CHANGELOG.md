@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.0
+
+- Replace dashboard From/To date filters with year and optional month selectors.
+- Add a category exclusion filter for all dashboard totals and charts, defaulting to Savings & Transfers.
+- Keep all-history and full-year views available, and preserve the existing CSV export date filters.
+
 ## 0.3.0
 
 - Match rules by transaction direction: Any, Incoming (positive), or Outgoing (negative).

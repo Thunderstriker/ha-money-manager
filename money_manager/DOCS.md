@@ -26,6 +26,10 @@ Import, categorize and visualize your online banking transactions, directly from
   - Monthly income vs. expenses bar chart.
   - Expense breakdown by category (doughnut chart).
   - Totals cards: income, expenses, net, and uncategorized count.
+  - Filter by year, or choose a year and month. **All years** shows the full history;
+    **All months** shows the entire selected year.
+  - Exclude a category from all dashboard totals and charts. **Savings & Transfers**
+    is excluded by default; choose **None** to include every category.
 - **Export** the currently filtered transactions back out to CSV.
 - **Multiple accounts**: import statements from separate accounts, filter the dashboard,
   transaction list and export by account, or select **Unassigned** for transactions
@@ -59,8 +63,9 @@ Import, categorize and visualize your online banking transactions, directly from
    transactions without a category.
 
 Existing transactions are kept as-is when upgrading; those without an account appear
-under **Unassigned**. Cross-account transfers are currently counted on both sides
-when viewing all accounts; categorize them as transfers if appropriate.
+under **Unassigned**. Categorize cross-account transfers as **Savings & Transfers**
+to exclude them from the dashboard by default. They remain visible in the transaction
+list and exports; selecting **None** under **Exclude category** includes them again.
 Display names are stored in the same SQLite database as your transactions; CSV export
 retains the original account identifiers, not the friendly names.
 

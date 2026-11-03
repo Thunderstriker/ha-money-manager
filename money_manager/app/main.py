@@ -268,9 +268,18 @@ def _build_filters(args):
     if args.get("to"):
         clauses.append("date <= ?")
         params.append(args["to"])
+    if args.get("year"):
+        clauses.append("substr(date, 1, 4) = ?")
+        params.append(args["year"])
+        if args.get("month"):
+            clauses.append("substr(date, 6, 2) = ?")
+            params.append(args["month"].zfill(2))
     if args.get("category_id"):
         clauses.append("category_id = ?")
         params.append(args["category_id"])
+    if args.get("exclude_category_id"):
+        clauses.append("(category_id IS NULL OR category_id != ?)")
+        params.append(args["exclude_category_id"])
     if args.get("uncategorized") == "1":
         clauses.append("category_id IS NULL")
     if args.get("account") == "__unassigned__":
@@ -497,6 +506,17 @@ def export_csv():
 # ---------------------------------------------------------------------------
 # Summary / visualization data
 # ---------------------------------------------------------------------------
+
+@app.route("/api/summary/years", methods=["GET"])
+def summary_years():
+    """Available transaction years, independent of dashboard filters."""
+    conn = db.get_db()
+    rows = conn.execute(
+        "SELECT DISTINCT substr(date, 1, 4) AS year FROM transactions ORDER BY year DESC"
+    ).fetchall()
+    conn.close()
+    return jsonify([r["year"] for r in rows])
+
 
 @app.route("/api/summary/monthly", methods=["GET"])
 def summary_monthly():

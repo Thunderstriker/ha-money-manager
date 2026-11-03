@@ -24,8 +24,25 @@
     <section id="tab-dashboard" class="tab-panel active">
       <div class="filter-bar">
         <label>Account <select id="dash-account"><option value="">All accounts</option></select></label>
-        <label>From <input type="date" id="dash-from" /></label>
-        <label>To <input type="date" id="dash-to" /></label>
+        <label>Year <select id="dash-year"><option value="">All years</option></select></label>
+        <label>Month
+          <select id="dash-month" disabled>
+            <option value="">All months</option>
+            <option value="01">January</option>
+            <option value="02">February</option>
+            <option value="03">March</option>
+            <option value="04">April</option>
+            <option value="05">May</option>
+            <option value="06">June</option>
+            <option value="07">July</option>
+            <option value="08">August</option>
+            <option value="09">September</option>
+            <option value="10">October</option>
+            <option value="11">November</option>
+            <option value="12">December</option>
+          </select>
+        </label>
+        <label>Exclude category <select id="dash-exclude-category"><option value="">None</option></select></label>
         <button id="dash-refresh">Refresh</button>
       </div>
 
