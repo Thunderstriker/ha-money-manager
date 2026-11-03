@@ -22,6 +22,9 @@ Import, categorize and visualize your online banking transactions, directly from
 - **Multiple accounts**: import statements from separate accounts, filter the dashboard,
   transaction list and export by account, or select **Unassigned** for transactions
   whose original file did not specify an account.
+- **Account names**: on the **Accounts** page, save a friendly name (e.g. "Everyday" or
+  "Savings") for any account in your imports. The name appears in account selectors
+  and transaction rows, while the bank account identifier remains unchanged.
 
 ## Usage
 
@@ -37,10 +40,14 @@ Import, categorize and visualize your online banking transactions, directly from
 5. Use the **Account** selector on the dashboard or transactions page to see one account,
    all accounts, or unassigned transactions. Click an account in the transaction list
    to reassign it (or clear the value). Export has its own account selector.
+6. On the **Accounts** page, type a display name for each account and click **Save**.
+   Clear the name and save to return to showing just the account identifier.
 
 Existing transactions are kept as-is when upgrading; those without an account appear
 under **Unassigned**. Cross-account transfers are currently counted on both sides
 when viewing all accounts; categorize them as transfers if appropriate.
+Display names are stored in the same SQLite database as your transactions; CSV export
+retains the original account identifiers, not the friendly names.
 
 ## Configuration
 

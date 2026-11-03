@@ -18,6 +18,7 @@
       document.getElementById(`tab-${btn.dataset.tab}`).classList.add("active");
       if (btn.dataset.tab === "dashboard") loadDashboard();
       if (btn.dataset.tab === "transactions") loadTransactions();
+      if (btn.dataset.tab === "accounts") loadAccounts();
       if (btn.dataset.tab === "categories") loadCategoriesAndRules();
     });
   });
@@ -33,17 +34,73 @@
       const select = document.getElementById(id);
       const current = select.value;
       select.replaceChildren(new Option("All accounts", ""));
-      accounts.forEach(({ account, count }) => {
-        select.add(new Option(`${account || "Unassigned"} (${count})`, account || "__unassigned__"));
+      accounts.forEach(({ account, name, count }) => {
+        const label = account ? `${name ? `${name} (${account})` : account} (${count})` : `Unassigned (${count})`;
+        select.add(new Option(label, account || "__unassigned__"));
       });
       select.value = [...select.options].some((option) => option.value === current) ? current : "";
     });
     const list = document.getElementById("known-accounts");
     list.replaceChildren();
-    accounts.filter((item) => item.account).forEach(({ account }) => {
+    accounts.filter((item) => item.account).forEach(({ account, name }) => {
       const option = document.createElement("option");
       option.value = account;
+      option.label = name ? `${name} (${account})` : account;
       list.appendChild(option);
+    });
+    renderAccounts();
+  }
+
+  function renderAccounts() {
+    const tbody = document.querySelector("#accounts-table tbody");
+    tbody.replaceChildren();
+    const message = document.getElementById("accounts-message");
+    if (!accounts.length) message.textContent = "No accounts yet. Import a statement to get started.";
+    else message.textContent = "";
+    accounts.forEach(({ account, name, count }) => {
+      const tr = document.createElement("tr");
+      const identifier = tr.insertCell();
+      identifier.textContent = account || "Unassigned";
+      const nameCell = tr.insertCell();
+      const countCell = tr.insertCell();
+      countCell.textContent = count;
+      const actionCell = tr.insertCell();
+      if (account) {
+        const input = document.createElement("input");
+        input.type = "text";
+        input.maxLength = 80;
+        input.value = name;
+        input.placeholder = "e.g. Everyday account";
+        input.setAttribute("aria-label", `Display name for ${account}`);
+        nameCell.appendChild(input);
+        const save = document.createElement("button");
+        save.textContent = "Save";
+        actionCell.appendChild(save);
+        const saveName = async () => {
+          save.disabled = true;
+          try {
+            const response = await fetch(api(`/api/accounts/${encodeURIComponent(account)}`), {
+              method: "PUT",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ name: input.value }),
+            });
+            if (!response.ok) throw new Error((await response.json()).error || "Could not save name");
+            await loadAccounts();
+            message.textContent = `Saved name for ${account}.`;
+            if (document.getElementById("tab-transactions").classList.contains("active")) loadTransactions();
+          } catch (error) {
+            message.textContent = error.message;
+            save.disabled = false;
+          }
+        };
+        save.addEventListener("click", saveName);
+        input.addEventListener("keydown", (event) => {
+          if (event.key === "Enter") saveName();
+        });
+      } else {
+        nameCell.textContent = "Assign these transactions on the Transactions page";
+      }
+      tbody.appendChild(tr);
     });
   }
 
@@ -170,8 +227,9 @@
       addCell(tx.date);
       const accountCell = addCell("");
       const accountButton = document.createElement("button");
-      accountButton.textContent = tx.account || "Unassigned";
-      accountButton.title = "Click to change account";
+      const accountName = accounts.find((item) => item.account === tx.account)?.name;
+      accountButton.textContent = accountName || tx.account || "Unassigned";
+      accountButton.title = `Click to change account${tx.account ? ` (${tx.account})` : ""}`;
       accountButton.addEventListener("click", async () => {
         const value = prompt("Account identifier (empty for unassigned):", tx.account || "");
         if (value === null) return;
@@ -200,6 +258,7 @@
       deleteButton.addEventListener("click", async () => {
         if (!confirm("Delete this transaction?")) return;
         await fetch(api(`/api/transactions/${tx.id}`), { method: "DELETE" });
+        await loadAccounts();
         loadTransactions();
       });
       tbody.appendChild(tr);

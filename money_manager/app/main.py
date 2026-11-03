@@ -191,14 +191,39 @@ def apply_rules():
 
 @app.route("/api/accounts", methods=["GET"])
 def list_accounts():
-    """List accounts already attached to transactions, including unassigned rows."""
+    """List known accounts (including saved names and accounts with no transactions)."""
     conn = db.get_db()
     rows = conn.execute(
-        """SELECT account, COUNT(*) AS count FROM transactions
-           GROUP BY account ORDER BY account"""
+        """SELECT accounts.account, accounts.name, COUNT(transactions.id) AS count
+           FROM accounts LEFT JOIN transactions ON transactions.account = accounts.account
+           GROUP BY accounts.account ORDER BY accounts.account"""
     ).fetchall()
+    unassigned = conn.execute(
+        "SELECT COUNT(*) AS count FROM transactions WHERE account = ''"
+    ).fetchone()["count"]
     conn.close()
-    return jsonify([dict(r) for r in rows])
+    result = [dict(r) for r in rows]
+    if unassigned:
+        result.insert(0, {"account": "", "name": "", "count": unassigned})
+    return jsonify(result)
+
+
+@app.route("/api/accounts/<account>", methods=["PUT"])
+def rename_account(account):
+    account = _normalize_account(account)
+    data = request.get_json(silent=True)
+    if not account or account == "__UNASSIGNED__" or not isinstance(data, dict):
+        return jsonify({"error": "invalid account or request body"}), 400
+    name = data.get("name")
+    if not isinstance(name, str) or len(name.strip()) > 80:
+        return jsonify({"error": "name must be a string of at most 80 characters"}), 400
+    conn = db.get_db()
+    cur = conn.execute("UPDATE accounts SET name = ? WHERE account = ?", (name.strip(), account))
+    conn.commit()
+    conn.close()
+    if not cur.rowcount:
+        return jsonify({"error": "account not found"}), 404
+    return jsonify({"ok": True})
 
 
 def _normalize_account(value):
@@ -272,6 +297,8 @@ def update_transaction(tx_id):
     params.append(tx_id)
     conn = db.get_db()
     conn.execute(f"UPDATE transactions SET {', '.join(fields)} WHERE id = ?", params)
+    if data.get("account"):
+        conn.execute("INSERT OR IGNORE INTO accounts(account) VALUES (?)", (data["account"],))
     conn.commit()
     conn.close()
     return jsonify({"ok": True})
@@ -313,6 +340,8 @@ def import_file():
     inserted = 0
     duplicates = 0
     for tx in parsed:
+        if tx["account"]:
+            conn.execute("INSERT OR IGNORE INTO accounts(account) VALUES (?)", (tx["account"],))
         tx_hash = importers.compute_hash(tx)
         existing = conn.execute(
             "SELECT id FROM transactions WHERE import_hash = ?", (tx_hash,)

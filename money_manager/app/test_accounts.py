@@ -89,6 +89,40 @@ class AccountsTest(unittest.TestCase):
             "BE11111111111111", "BE22222222222222", "BE33333333333333",
         })
 
+    def test_account_names_survive_reimport_and_empty_account(self):
+        csv_text = "date,amount,description,account\n2024-01-03,-10,Food,BE11111111111111\n"
+        self.upload(csv_text)
+        response = self.client.put("/api/accounts/BE11111111111111", json={"name": "  Everyday account  "})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(self.upload(csv_text)["duplicates"], 1)
+        accounts = self.client.get("/api/accounts").get_json()
+        self.assertEqual(accounts[0]["name"], "Everyday account")
+        self.assertEqual(self.client.get("/api/transactions").get_json()["items"][0]["account"],
+                         "BE11111111111111")
+        self.assertIn("BE11111111111111", self.client.get("/api/export").data.decode("utf-8-sig"))
+        self.assertEqual(self.client.put("/api/accounts/BE11111111111111", json={"name": ""}).status_code, 200)
+        self.assertEqual(self.client.get("/api/accounts").get_json()[0]["name"], "")
+        self.assertEqual(self.client.put("/api/accounts/__unassigned__", json={"name": "Other"}).status_code, 400)
+        self.assertEqual(self.client.put("/api/accounts/BE999", json={"name": "Unknown"}).status_code, 404)
+        self.assertEqual(self.client.put("/api/accounts/BE11111111111111", json={"name": 3}).status_code, 400)
+
+    def test_upgrade_existing_database_and_keep_name_after_deleting_transactions(self):
+        csv_text = "date,amount,description,account\n2024-01-03,-10,Food,BE11111111111111\n"
+        self.upload(csv_text)
+        conn = db.get_db()
+        conn.execute("DROP TABLE accounts")  # Simulate the schema from the previous release.
+        conn.commit()
+        conn.close()
+        db.init_db()
+        self.assertEqual(self.client.get("/api/accounts").get_json()[0]["account"], "BE11111111111111")
+        self.client.put("/api/accounts/BE11111111111111", json={"name": "Savings"})
+        db.init_db()  # Subsequent app startups must not reset saved names.
+        tx_id = self.client.get("/api/transactions").get_json()["items"][0]["id"]
+        self.client.delete(f"/api/transactions/{tx_id}")
+        self.assertEqual(self.client.get("/api/accounts").get_json()[0], {
+            "account": "BE11111111111111", "name": "Savings", "count": 0,
+        })
+
 
 if __name__ == "__main__":
     unittest.main()

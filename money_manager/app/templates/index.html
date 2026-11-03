@@ -14,6 +14,7 @@
       <button class="tab-btn active" data-tab="dashboard">Dashboard</button>
       <button class="tab-btn" data-tab="transactions">Transactions</button>
       <button class="tab-btn" data-tab="importexport">Import / Export</button>
+      <button class="tab-btn" data-tab="accounts">Accounts</button>
       <button class="tab-btn" data-tab="categories">Categories &amp; Rules</button>
     </nav>
   </header>
@@ -88,6 +89,20 @@
         <label>From <input type="date" id="export-from" /></label>
         <label>To <input type="date" id="export-to" /></label>
         <button id="export-btn">Download CSV</button>
+      </div>
+    </section>
+
+    <!-- Accounts -->
+    <section id="tab-accounts" class="tab-panel">
+      <div class="panel-box">
+        <h3>Bank accounts</h3>
+        <p>Accounts are added when you import a bank statement or assign a transaction.
+          Give each one a name to recognize it throughout Money Manager. Its identifier and transactions won't change.</p>
+        <table class="simple-table" id="accounts-table">
+          <thead><tr><th>Account identifier</th><th>Display name</th><th>Transactions</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table>
+        <p id="accounts-message" role="status" aria-live="polite"></p>
       </div>
     </section>
 

@@ -38,8 +38,14 @@ CREATE TABLE IF NOT EXISTS transactions (
     created_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS accounts (
+    account TEXT PRIMARY KEY NOT NULL CHECK(account <> ''),
+    name TEXT NOT NULL DEFAULT ''
+);
+
 CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(date);
 CREATE INDEX IF NOT EXISTS idx_transactions_category ON transactions(category_id);
+CREATE INDEX IF NOT EXISTS idx_transactions_account ON transactions(account);
 """
 
 DEFAULT_CATEGORIES = [
@@ -95,6 +101,12 @@ def init_db():
     conn = get_db()
     try:
         conn.executescript(SCHEMA)
+        # Pick up accounts from databases created before account names existed.
+        # Never change transaction rows or their import hashes during the upgrade.
+        conn.execute(
+            """INSERT OR IGNORE INTO accounts(account)
+               SELECT DISTINCT account FROM transactions WHERE account <> ''"""
+        )
         existing = conn.execute("SELECT COUNT(*) AS c FROM categories").fetchone()["c"]
         if existing == 0:
             conn.executemany(

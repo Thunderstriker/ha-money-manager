@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.1
+
+- Add an Accounts page to give each bank account a friendly display name.
+- Display names appear in account filters and the transaction list; identifiers and transaction data stay unchanged.
+- Preserve names through imports and app restarts, including accounts with no transactions.
+
 ## 0.2.0
 
 - Track transactions from multiple bank accounts separately; filter the dashboard, transaction list, and CSV export by account.
