@@ -18,9 +18,14 @@ def _field_values(tx, field):
 
 
 def categorize(tx, rules):
-    """rules: list of sqlite3.Row-like dicts with pattern, field, category_id, priority,
+    """rules: list of sqlite3.Row-like dicts with pattern, field, category_id, priority, direction,
     already sorted by priority ascending (lower = higher priority)."""
     for rule in rules:
+        direction = rule["direction"]
+        amount = tx.get("amount", 0)
+        if (direction == "incoming" and amount <= 0 or
+                direction == "outgoing" and amount >= 0):
+            continue
         pattern = (rule["pattern"] or "").strip().lower()
         if not pattern:
             continue

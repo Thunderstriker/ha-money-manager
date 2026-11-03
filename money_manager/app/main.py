@@ -93,6 +93,8 @@ def delete_category(category_id):
 # Rules
 # ---------------------------------------------------------------------------
 
+RULE_DIRECTIONS = ("any", "incoming", "outgoing")
+
 @app.route("/api/rules", methods=["GET"])
 def list_rules():
     conn = db.get_db()
@@ -107,40 +109,68 @@ def list_rules():
 
 @app.route("/api/rules", methods=["POST"])
 def create_rule():
-    data = request.get_json(force=True)
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({"error": "a JSON object is required"}), 400
+    pattern = data.get("pattern")
+    field = data.get("field", "any")
+    direction = data.get("direction", "any")
+    priority = data.get("priority", 100)
+    category_id = data.get("category_id")
+    if (not isinstance(pattern, str) or not pattern.strip() or
+            field not in ("description", "counterparty", "iban", "any") or
+            direction not in RULE_DIRECTIONS or
+            not isinstance(priority, int) or isinstance(priority, bool) or
+            not isinstance(category_id, int) or isinstance(category_id, bool)):
+        return jsonify({"error": "invalid rule fields"}), 400
     conn = db.get_db()
-    cur = conn.execute(
-        "INSERT INTO rules(pattern, field, category_id, priority) VALUES (?, ?, ?, ?)",
-        (
-            data.get("pattern", "").strip(),
-            data.get("field", "any"),
-            data.get("category_id"),
-            data.get("priority", 100),
-        ),
-    )
-    conn.commit()
-    new_id = cur.lastrowid
-    conn.close()
-    return jsonify({"id": new_id}), 201
+    try:
+        if not conn.execute("SELECT 1 FROM categories WHERE id = ?", (category_id,)).fetchone():
+            return jsonify({"error": "category not found"}), 400
+        cur = conn.execute(
+            """INSERT INTO rules(pattern, field, category_id, priority, direction)
+               VALUES (?, ?, ?, ?, ?)""",
+            (pattern.strip(), field, category_id, priority, direction),
+        )
+        conn.commit()
+        return jsonify({"id": cur.lastrowid}), 201
+    finally:
+        conn.close()
 
 
 @app.route("/api/rules/<int:rule_id>", methods=["PUT"])
 def update_rule(rule_id):
-    data = request.get_json(force=True)
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({"error": "a JSON object is required"}), 400
     conn = db.get_db()
-    conn.execute(
-        "UPDATE rules SET pattern = ?, field = ?, category_id = ?, priority = ? WHERE id = ?",
-        (
-            data.get("pattern", "").strip(),
-            data.get("field", "any"),
-            data.get("category_id"),
-            data.get("priority", 100),
-            rule_id,
-        ),
-    )
-    conn.commit()
-    conn.close()
-    return jsonify({"ok": True})
+    try:
+        existing = conn.execute("SELECT * FROM rules WHERE id = ?", (rule_id,)).fetchone()
+        if existing is None:
+            return jsonify({"error": "rule not found"}), 404
+        pattern = data.get("pattern", existing["pattern"])
+        field = data.get("field", existing["field"])
+        direction = data.get("direction", existing["direction"])
+        category_id = data.get("category_id", existing["category_id"])
+        priority = data.get("priority", existing["priority"])
+        if (not isinstance(pattern, str) or not pattern.strip() or
+                field not in ("description", "counterparty", "iban", "any") or
+                direction not in RULE_DIRECTIONS or
+                not isinstance(priority, int) or isinstance(priority, bool) or
+                not isinstance(category_id, int) or isinstance(category_id, bool)):
+            return jsonify({"error": "invalid rule fields"}), 400
+        if not conn.execute("SELECT 1 FROM categories WHERE id = ?", (category_id,)).fetchone():
+            return jsonify({"error": "category not found"}), 400
+        conn.execute(
+            """UPDATE rules SET pattern = ?, field = ?, category_id = ?, priority = ?, direction = ?
+               WHERE id = ?""",
+            (pattern.strip() if "pattern" in data else pattern,
+             field, category_id, priority, direction, rule_id),
+        )
+        conn.commit()
+        return jsonify({"ok": True})
+    finally:
+        conn.close()
 
 
 @app.route("/api/rules/<int:rule_id>", methods=["DELETE"])
@@ -316,6 +346,7 @@ def create_rule_from_transaction(tx_id):
         return jsonify({"error": "a JSON object is required"}), 400
     pattern = data.get("pattern")
     field = data.get("field")
+    direction = data.get("direction", "any")
     category_id = data.get("category_id")
     priority = data.get("priority", 0)
     apply_existing = data.get("apply_existing", True)
@@ -324,6 +355,8 @@ def create_rule_from_transaction(tx_id):
     pattern = pattern.strip()
     if field not in ("description", "counterparty", "iban", "any"):
         return jsonify({"error": "invalid match field"}), 400
+    if direction not in RULE_DIRECTIONS:
+        return jsonify({"error": "invalid direction"}), 400
     if (not isinstance(priority, int) or isinstance(priority, bool) or
             not isinstance(category_id, int) or isinstance(category_id, bool) or
             not isinstance(apply_existing, bool)):
@@ -336,13 +369,15 @@ def create_rule_from_transaction(tx_id):
             return jsonify({"error": "transaction not found"}), 404
         if not conn.execute("SELECT 1 FROM categories WHERE id = ?", (category_id,)).fetchone():
             return jsonify({"error": "category not found"}), 400
-        rule = {"pattern": pattern, "field": field, "category_id": category_id, "priority": priority}
+        rule = {"pattern": pattern, "field": field, "category_id": category_id,
+                "priority": priority, "direction": direction}
         if cat_engine.categorize(dict(tx), [rule]) is None:
-            return jsonify({"error": "pattern does not match the selected transaction"}), 400
+            return jsonify({"error": "pattern and direction must match the selected transaction"}), 400
 
         cur = conn.execute(
-            "INSERT INTO rules(pattern, field, category_id, priority) VALUES (?, ?, ?, ?)",
-            (pattern, field, category_id, priority),
+            """INSERT INTO rules(pattern, field, category_id, priority, direction)
+               VALUES (?, ?, ?, ?, ?)""",
+            (pattern, field, category_id, priority, direction),
         )
         conn.execute("UPDATE transactions SET category_id = ? WHERE id = ?", (category_id, tx_id))
         matched = 0

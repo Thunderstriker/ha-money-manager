@@ -86,6 +86,82 @@ class TransactionRulesTest(unittest.TestCase):
         self.assertEqual(self.client.post("/api/transactions/999999/rules", json=payload).status_code,
                          404)
 
+    def test_rule_direction_on_import_and_existing_rule_edit(self):
+        payload = {"pattern": "shared", "field": "description", "category_id": self.category,
+                   "priority": 0, "direction": "incoming"}
+        response = self.client.post("/api/rules", json=payload)
+        self.assertEqual(response.status_code, 201)
+        rule_id = response.get_json()["id"]
+        self.import_csv("2024-01-01,10,Shared payment,BE111\n"
+                        "2024-01-02,-10,Shared payment,BE222\n"
+                        "2024-01-03,0,Shared payment,BE333\n")
+        items = self.client.get("/api/transactions").get_json()["items"]
+        self.assertEqual({tx["amount"]: tx["category_id"] for tx in items}, {
+            10: self.category, -10: None, 0: None,
+        })
+        self.assertEqual(self.client.put(f"/api/rules/{rule_id}",
+                                         json={"direction": "outgoing"}).status_code, 200)
+        self.assertEqual(next(r for r in self.client.get("/api/rules").get_json()
+                              if r["id"] == rule_id)["direction"], "outgoing")
+        self.assertEqual(self.client.post("/api/rules/apply", json={"all": False})
+                         .get_json()["updated"], 1)
+        self.assertIsNone(next(tx for tx in self.client.get("/api/transactions").get_json()["items"]
+                               if tx["amount"] == 0)["category_id"])
+        self.import_csv("2024-02-01,20,Shared income,BE111\n"
+                        "2024-02-02,-20,Shared expense,BE111\n")
+        recent = {tx["amount"]: tx["category_id"] for tx in
+                  self.client.get("/api/transactions").get_json()["items"]}
+        self.assertIsNone(recent[20])
+        self.assertEqual(recent[-20], self.category)
+        self.assertEqual(self.client.post("/api/rules", json={**payload, "direction": "sideways"})
+                         .status_code, 400)
+        self.assertEqual(self.client.put(f"/api/rules/{rule_id}", json={"direction": "sideways"})
+                         .status_code, 400)
+        bp = next(r for r in self.client.get("/api/rules").get_json() if r["pattern"] == "bp ")
+        self.assertEqual(self.client.put(f"/api/rules/{bp['id']}",
+                                         json={"direction": "outgoing"}).status_code, 200)
+        self.assertEqual(next(r for r in self.client.get("/api/rules").get_json()
+                              if r["id"] == bp["id"])["pattern"], "bp ")
+
+    def test_transaction_rule_direction_and_targeted_apply(self):
+        self.import_csv("2024-01-01,15,Shared transfer,BE111\n"
+                        "2024-01-02,-15,Shared transfer,BE222\n"
+                        "2024-01-03,0,Shared transfer,BE333\n")
+        tx = next(tx for tx in self.client.get("/api/transactions").get_json()["items"]
+                  if tx["amount"] == 15)
+        url = f"/api/transactions/{tx['id']}/rules"
+        payload = {"pattern": "Shared", "field": "description", "category_id": self.category,
+                   "direction": "incoming", "apply_existing": True}
+        self.assertEqual(self.client.post(url, json={**payload, "direction": "outgoing"})
+                         .status_code, 400)
+        self.assertEqual(self.client.post(url, json=payload).get_json()["updated"], 1)
+        rows = self.client.get("/api/transactions").get_json()["items"]
+        self.assertEqual({row["amount"]: row["category_id"] for row in rows}, {
+            15: self.category, -15: None, 0: None,
+        })
+        self.assertEqual(self.client.get("/api/rules").get_json()[0]["direction"], "incoming")
+
+    def test_upgrade_rules_without_direction_keeps_prior_rules(self):
+        conn = db.get_db()
+        conn.execute("DROP TABLE rules")
+        conn.execute("""CREATE TABLE rules (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, pattern TEXT NOT NULL, field TEXT NOT NULL,
+            category_id INTEGER NOT NULL, priority INTEGER NOT NULL DEFAULT 100)""")
+        conn.execute("INSERT INTO rules(pattern, field, category_id, priority) VALUES (?, ?, ?, ?)",
+                     ("legacy", "description", self.category, 9))
+        conn.commit()
+        conn.close()
+        db.init_db()
+        db.init_db()
+        rules = self.client.get("/api/rules").get_json()
+        self.assertEqual(len(rules), 1)
+        self.assertEqual((rules[0]["pattern"], rules[0]["direction"], rules[0]["priority"]),
+                         ("legacy", "any", 9))
+        self.import_csv("2024-01-01,-10,Legacy shop,BE111\n"
+                        "2024-01-02,10,Legacy refund,BE111\n")
+        self.assertTrue(all(tx["category_id"] == self.category for tx in
+                            self.client.get("/api/transactions").get_json()["items"]))
+
 
 if __name__ == "__main__":
     unittest.main()

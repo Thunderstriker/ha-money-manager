@@ -129,11 +129,12 @@
 
       <div class="panel-box">
         <h3>Auto-categorization rules</h3>
-        <p>A rule matches when its pattern is found (case-insensitive) in the chosen field. Lower priority number = checked first.</p>
+        <p>A rule matches when its pattern is found (case-insensitive) in the chosen field and its direction matches the transaction. Lower priority number = checked first.</p>
         <table class="simple-table" id="rules-table">
-          <thead><tr><th>Pattern</th><th>Field</th><th>Category</th><th>Priority</th><th></th></tr></thead>
+          <thead><tr><th>Pattern</th><th>Field</th><th>Direction</th><th>Category</th><th>Priority</th><th></th></tr></thead>
           <tbody></tbody>
         </table>
+        <p id="rules-message" role="status" aria-live="polite"></p>
         <div class="add-row">
           <input type="text" id="new-rule-pattern" placeholder="e.g. albert heijn" />
           <select id="new-rule-field">
@@ -141,6 +142,11 @@
             <option value="description">description</option>
             <option value="counterparty">counterparty</option>
             <option value="iban">iban</option>
+          </select>
+          <select id="new-rule-direction" aria-label="Rule direction">
+            <option value="any">Any direction</option>
+            <option value="incoming">Incoming</option>
+            <option value="outgoing">Outgoing</option>
           </select>
           <select id="new-rule-category"></select>
           <input type="number" id="new-rule-priority" value="100" style="width:70px" />
@@ -164,6 +170,13 @@
       </label>
       <label>Contains text
         <input id="rule-dialog-pattern" type="text" required placeholder="A recognizable merchant or keyword" />
+      </label>
+      <label>Direction
+        <select id="rule-dialog-direction">
+          <option value="any">Any direction</option>
+          <option value="incoming">Incoming</option>
+          <option value="outgoing">Outgoing</option>
+        </select>
       </label>
       <label>Category
         <select id="rule-dialog-category" required></select>

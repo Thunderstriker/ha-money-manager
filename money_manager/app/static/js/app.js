@@ -285,6 +285,8 @@
 
     const field = document.getElementById("rule-dialog-field");
     field.value = tx.counterparty?.trim() ? "counterparty" : tx.description?.trim() ? "description" : "iban";
+    document.getElementById("rule-dialog-direction").value =
+      tx.amount > 0 ? "incoming" : tx.amount < 0 ? "outgoing" : "any";
     document.getElementById("rule-dialog-pattern").value = (tx[field.value] || "").trim();
     const category = document.getElementById("rule-dialog-category");
     category.replaceChildren(new Option("Choose a category", ""));
@@ -316,6 +318,7 @@
         body: JSON.stringify({
           pattern: document.getElementById("rule-dialog-pattern").value.trim(),
           field: document.getElementById("rule-dialog-field").value,
+          direction: document.getElementById("rule-dialog-direction").value,
           category_id: Number(document.getElementById("rule-dialog-category").value),
           priority: Number(document.getElementById("rule-dialog-priority").value),
           apply_existing: document.getElementById("rule-dialog-apply").checked,
@@ -439,17 +442,46 @@
     ruleTbody.innerHTML = "";
     rules.forEach((r) => {
       const tr = document.createElement("tr");
-      tr.innerHTML = `
-        <td>${r.pattern}</td>
-        <td>${r.field}</td>
-        <td>${r.category_name}</td>
-        <td>${r.priority}</td>
-        <td class="row-actions"><button class="danger" data-id="${r.id}">Delete</button></td>
-      `;
-      tr.querySelector(".danger").addEventListener("click", async () => {
+      for (const value of [r.pattern, r.field]) tr.insertCell().textContent = value;
+      const directionCell = tr.insertCell();
+      const directionSelect = document.createElement("select");
+      for (const [value, label] of [["any", "Any"], ["incoming", "Incoming"], ["outgoing", "Outgoing"]]) {
+        directionSelect.add(new Option(label, value));
+      }
+      directionSelect.value = r.direction;
+      directionSelect.setAttribute("aria-label", `Direction for ${r.pattern}`);
+      directionCell.appendChild(directionSelect);
+      tr.insertCell().textContent = r.category_name;
+      tr.insertCell().textContent = r.priority;
+      const actions = tr.insertCell();
+      actions.className = "row-actions";
+      const save = document.createElement("button");
+      save.textContent = "Save";
+      save.addEventListener("click", async () => {
+        save.disabled = true;
+        try {
+          const response = await fetch(api(`/api/rules/${r.id}`), {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ direction: directionSelect.value }),
+          });
+          if (!response.ok) throw new Error((await response.json()).error || "Could not save direction");
+          document.getElementById("rules-message").textContent = `Saved direction for ${r.pattern}.`;
+        } catch (error) {
+          document.getElementById("rules-message").textContent = error.message;
+        } finally {
+          save.disabled = false;
+        }
+      });
+      actions.appendChild(save);
+      const remove = document.createElement("button");
+      remove.className = "danger";
+      remove.textContent = "Delete";
+      remove.addEventListener("click", async () => {
         await fetch(api(`/api/rules/${r.id}`), { method: "DELETE" });
         loadCategoriesAndRules();
       });
+      actions.appendChild(remove);
       ruleTbody.appendChild(tr);
     });
   }
@@ -471,16 +503,24 @@
   document.getElementById("add-rule").addEventListener("click", async () => {
     const pattern = document.getElementById("new-rule-pattern").value.trim();
     const field = document.getElementById("new-rule-field").value;
+    const direction = document.getElementById("new-rule-direction").value;
     const category_id = Number(document.getElementById("new-rule-category").value);
     const priority = Number(document.getElementById("new-rule-priority").value || 100);
     if (!pattern || !category_id) return;
-    await fetch(api(`/api/rules`), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ pattern, field, category_id, priority }),
-    });
-    document.getElementById("new-rule-pattern").value = "";
-    loadCategoriesAndRules();
+    const message = document.getElementById("rules-message");
+    try {
+      const response = await fetch(api(`/api/rules`), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pattern, field, direction, category_id, priority }),
+      });
+      if (!response.ok) throw new Error((await response.json()).error || "Could not add rule");
+      document.getElementById("new-rule-pattern").value = "";
+      await loadCategoriesAndRules();
+      message.textContent = `Rule for ${pattern} added.`;
+    } catch (error) {
+      message.textContent = error.message;
+    }
   });
 
   // --------------------------------------------------------------- init --

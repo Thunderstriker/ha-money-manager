@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.0
+
+- Match rules by transaction direction: Any, Incoming (positive), or Outgoing (negative).
+- Choose direction when creating a rule manually or from a transaction; edit existing rules in Categories & Rules.
+- Existing rules migrate to Any direction without changing their previous behavior.
+
 ## 0.2.2
 
 - Add a Create rule dialog to every transaction, with suggested match text and its category preselected.

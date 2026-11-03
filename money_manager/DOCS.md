@@ -12,6 +12,7 @@ Import, categorize and visualize your online banking transactions, directly from
 - **Categorize** transactions:
   - Define your own categories (income / expense / transfer) with colors.
   - Define keyword-based rules (e.g. "albert heijn" → Groceries) that are automatically applied on import.
+  - Restrict rules to **Incoming** (+), **Outgoing** (-), or **Any** direction.
   - Re-apply rules at any time, to uncategorized transactions only or to everything.
   - Manually override the category of any transaction from the Transactions tab.
   - Click **Create rule** on a transaction to make a rule from its counterparty,
@@ -19,6 +20,8 @@ Import, categorize and visualize your online banking transactions, directly from
     the selected transaction is updated immediately. Optionally categorize other
     uncategorized matches, without changing transactions already categorized.
     These rules apply across all accounts, including future imports.
+    The dialog suggests Incoming/Outgoing from the selected transaction; choose Any
+    to match both. The chosen direction must include the selected transaction.
 - **Visualize**:
   - Monthly income vs. expenses bar chart.
   - Expense breakdown by category (doughnut chart).
@@ -47,6 +50,13 @@ Import, categorize and visualize your online banking transactions, directly from
    to reassign it (or clear the value). Export has its own account selector.
 6. On the **Accounts** page, type a display name for each account and click **Save**.
    Clear the name and save to return to showing just the account identifier.
+7. On **Categories & Rules**, choose a direction for a new rule, or change the
+   direction dropdown on an existing rule and click **Save**. **Any** matches both
+   positive and negative amounts (and zero); **Incoming** matches amounts greater
+   than zero, and **Outgoing** matches amounts less than zero. Existing rules
+   start as Any after upgrading. Changing a rule does not recategorize already
+   categorized transactions; use **Apply rules to uncategorized** to fill in
+   transactions without a category.
 
 Existing transactions are kept as-is when upgrading; those without an account appear
 under **Unassigned**. Cross-account transfers are currently counted on both sides

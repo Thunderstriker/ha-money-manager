@@ -20,7 +20,8 @@ CREATE TABLE IF NOT EXISTS rules (
     pattern TEXT NOT NULL,
     field TEXT NOT NULL CHECK(field IN ('description','counterparty','iban','any')) DEFAULT 'any',
     category_id INTEGER NOT NULL REFERENCES categories(id) ON DELETE CASCADE,
-    priority INTEGER NOT NULL DEFAULT 100
+    priority INTEGER NOT NULL DEFAULT 100,
+    direction TEXT NOT NULL DEFAULT 'any' CHECK(direction IN ('any','incoming','outgoing'))
 );
 
 CREATE TABLE IF NOT EXISTS transactions (
@@ -101,6 +102,13 @@ def init_db():
     conn = get_db()
     try:
         conn.executescript(SCHEMA)
+        # Older databases have no direction column; existing rules must keep
+        # matching both incoming and outgoing transactions after the upgrade.
+        if "direction" not in {row["name"] for row in conn.execute("PRAGMA table_info(rules)")}:
+            conn.execute(
+                """ALTER TABLE rules ADD COLUMN direction TEXT NOT NULL DEFAULT 'any'
+                   CHECK(direction IN ('any','incoming','outgoing'))"""
+            )
         # Pick up accounts from databases created before account names existed.
         # Never change transaction rows or their import hashes during the upgrade.
         conn.execute(
