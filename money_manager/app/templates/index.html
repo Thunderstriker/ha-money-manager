@@ -63,6 +63,29 @@
           <canvas id="chart-categories"></canvas>
         </div>
       </div>
+
+      <div class="dashboard-lists">
+        <div class="panel-box">
+          <h3 id="dash-incoming-title">Incoming transactions</h3>
+          <p id="dash-incoming-status" role="status" aria-live="polite"></p>
+          <div class="dashboard-table-scroll" role="region" aria-labelledby="dash-incoming-title" tabindex="0">
+            <table class="tx-table" aria-labelledby="dash-incoming-title">
+              <thead><tr><th>Date</th><th>Account</th><th>Description</th><th>Counterparty</th><th>Category</th><th>Amount</th></tr></thead>
+              <tbody id="dash-incoming-rows"></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="panel-box">
+          <h3 id="dash-expenses-title">Expenses</h3>
+          <p id="dash-expenses-status" role="status" aria-live="polite"></p>
+          <div class="dashboard-table-scroll" role="region" aria-labelledby="dash-expenses-title" tabindex="0">
+            <table class="tx-table" aria-labelledby="dash-expenses-title">
+              <thead><tr><th>Date</th><th>Account</th><th>Description</th><th>Counterparty</th><th>Category</th><th>Amount</th></tr></thead>
+              <tbody id="dash-expenses-rows"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
     </section>
 
     <!-- Transactions -->
@@ -172,6 +195,27 @@
       </div>
     </section>
   </main>
+
+  <dialog id="category-dialog" aria-labelledby="category-dialog-title">
+    <form id="category-dialog-form">
+      <h3 id="category-dialog-title">Edit category</h3>
+      <label>Name <input id="category-dialog-name" type="text" required /></label>
+      <label>Type
+        <select id="category-dialog-type" required>
+          <option value="expense">expense</option>
+          <option value="income">income</option>
+          <option value="transfer">transfer</option>
+        </select>
+      </label>
+      <label>Color <input id="category-dialog-color" type="color" required /></label>
+      <p class="muted">Transactions and rules linked to this category will be kept.</p>
+      <p id="category-dialog-error" role="alert"></p>
+      <div class="dialog-actions">
+        <button type="button" id="category-dialog-cancel" class="secondary">Cancel</button>
+        <button type="submit" id="category-dialog-save">Save</button>
+      </div>
+    </form>
+  </dialog>
 
   <dialog id="rule-dialog" aria-labelledby="rule-dialog-title">
     <form id="rule-dialog-form">

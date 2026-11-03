@@ -11,6 +11,8 @@ Import, categorize and visualize your online banking transactions, directly from
   - Automatic de-duplication, so importing the same file (or an overlapping period) twice is safe.
 - **Categorize** transactions:
   - Define your own categories (income / expense / transfer) with colors.
+  - Click **Edit** next to a category to change its name, type, or color, then
+    **Save**. **Cancel** discards the edits. Linked transactions and rules are kept.
   - Define keyword-based rules (e.g. "albert heijn" → Groceries) that are automatically applied on import.
   - Restrict rules to **Incoming** (+), **Outgoing** (-), or **Any** direction.
   - Re-apply rules at any time, to uncategorized transactions only or to everything.
@@ -26,6 +28,9 @@ Import, categorize and visualize your online banking transactions, directly from
   - Monthly income vs. expenses bar chart.
   - Expense breakdown by category (doughnut chart).
   - Totals cards: income, expenses, net, and uncategorized count.
+  - Separate incoming transaction and expense lists show every transaction matching
+    the dashboard filters, newest first, with account, description, counterparty,
+    category, and amount. Scroll within each list to see all rows.
   - Filter by year, or choose a year and month. **All years** shows the full history;
     **All months** shows the entire selected year.
   - Exclude a category from all dashboard totals and charts. **Savings & Transfers**

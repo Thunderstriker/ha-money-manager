@@ -126,6 +126,14 @@ th { color: var(--muted); font-weight: 600; }
 .tx-table .amount-pos { color: var(--income); font-weight: 600; }
 .tx-table .amount-neg { color: var(--expense); font-weight: 600; }
 
+.dashboard-lists { margin-top: 20px; }
+.dashboard-table-scroll { max-height: 400px; overflow: auto; }
+.dashboard-table-scroll table { margin-top: 0; }
+.dashboard-table-scroll th { position: sticky; top: 0; background: var(--panel); }
+.dashboard-table-scroll td:first-child,
+.dashboard-table-scroll td:last-child { white-space: nowrap; }
+.dashboard-table-scroll td:last-child { text-align: right; }
+
 .pagination { display: flex; gap: 10px; align-items: center; margin-top: 10px; }
 
 .panel-box {
@@ -180,4 +188,4 @@ dialog .checkbox-label { display: flex; gap: 8px; align-items: flex-start; }
 dialog .checkbox-label input { width: auto; margin: 2px 0 0; }
 dialog .dialog-actions { display: flex; gap: 10px; justify-content: flex-end; }
 dialog .secondary { background: var(--panel-alt); color: var(--text); border: 1px solid var(--border); }
-#rule-dialog-error { color: var(--expense); }
+#rule-dialog-error, #category-dialog-error { color: var(--expense); }

@@ -115,6 +115,53 @@ class DashboardTest(unittest.TestCase):
         self.assertIn("2024-02-29", exported)
         self.assertIn("2024-03-01", exported)
 
+    def test_transaction_lists_match_totals_and_filters(self):
+        for filters in ({}, {"year": "2024"},
+                        {"year": "2024", "month": "02", "exclude_category_id": self.savings_id},
+                        {"year": "2024", "month": "02", "account": "BE111",
+                         "exclude_category_id": self.savings_id},
+                        {"account": "__unassigned__"},
+                        {"year": "2024", "month": "04"}):
+            with self.subTest(filters=filters):
+                lists = self.summary("transactions", **filters)
+                totals = self.summary("totals", **filters)
+                self.assertEqual(sum(tx["amount"] for tx in lists["incoming"]), totals["income"])
+                self.assertEqual(sum(-tx["amount"] for tx in lists["expenses"]), totals["expense"])
+                self.assertEqual(len(lists["incoming"]) + len(lists["expenses"]), totals["count"])
+                self.assertTrue(all(tx["amount"] > 0 for tx in lists["incoming"]))
+                self.assertTrue(all(tx["amount"] < 0 for tx in lists["expenses"]))
+                for items in lists.values():
+                    self.assertEqual([(tx["date"], tx["id"]) for tx in items],
+                                     sorted([(tx["date"], tx["id"]) for tx in items], reverse=True))
+
+    def test_transaction_lists_include_names_details_and_uncategorized(self):
+        conn = db.get_db()
+        conn.execute("INSERT INTO accounts(account, name) VALUES ('BE111', 'Everyday')")
+        conn.execute("UPDATE transactions SET description = 'Food', counterparty = 'Shop' WHERE amount = -20")
+        conn.commit()
+        conn.close()
+        lists = self.summary("transactions", year="2024", month="02", exclude_category_id=self.savings_id)
+        food = next(tx for tx in lists["expenses"] if tx["amount"] == -20)
+        self.assertEqual(food["account_name"], "Everyday")
+        self.assertEqual(food["account"], "BE111")
+        self.assertEqual(food["description"], "Food")
+        self.assertEqual(food["counterparty"], "Shop")
+        self.assertEqual(food["category_name"], "Groceries")
+        self.assertTrue(any(tx["category_name"] is None for tx in lists["expenses"]))
+
+    def test_transaction_lists_are_not_truncated_and_skip_zero_amounts(self):
+        conn = db.get_db()
+        conn.executemany(
+            """INSERT INTO transactions(date, amount, created_at)
+               VALUES ('2026-01-01', ?, '2026-01-01T00:00:00Z')""",
+            [(1,)] * 501 + [(-1,)] * 501 + [(0,)],
+        )
+        conn.commit()
+        conn.close()
+        lists = self.summary("transactions", year="2026")
+        self.assertEqual(len(lists["incoming"]), 501)
+        self.assertEqual(len(lists["expenses"]), 501)
+
 
 if __name__ == "__main__":
     unittest.main()

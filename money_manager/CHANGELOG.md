@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.5.0
+
+- Edit category names, types, and colors from Categories & Rules without losing linked transactions or rules.
+- Validate category edits and show errors for invalid values or duplicate names.
+- Add incoming transaction and expense lists to the dashboard, using the same account, year/month, and category exclusion filters as the totals and charts.
+- Show all matching transactions newest first in scrollable lists, with empty-state messages when no transactions match.
+
 ## 0.4.0
 
 - Replace dashboard From/To date filters with year and optional month selectors.

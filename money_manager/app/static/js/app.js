@@ -9,7 +9,9 @@
   let monthlyChart = null;
   let categoryChart = null;
   let ruleSource = null;
+  let editingCategoryId = null;
   let dashboardCategoryInitialized = false;
+  let dashboardRequestId = 0;
 
   // ---------------------------------------------------------------- tabs --
   document.querySelectorAll(".tab-btn").forEach((btn) => {
@@ -120,7 +122,9 @@
   }
 
   async function loadDashboard() {
+    const requestId = ++dashboardRequestId;
     await loadDashboardYears();
+    if (requestId !== dashboardRequestId) return;
     const year = document.getElementById("dash-year").value;
     const month = document.getElementById("dash-month").value;
     const excludeCategory = document.getElementById("dash-exclude-category").value;
@@ -131,11 +135,16 @@
     if (year && month) qs.set("month", month);
     if (excludeCategory) qs.set("exclude_category_id", excludeCategory);
 
-    const [totals, monthly, byCategory] = await Promise.all([
+    const [totals, monthly, byCategory, transactions] = await Promise.all([
       fetch(api(`/api/summary/totals?${qs}`)).then((r) => r.json()),
       fetch(api(`/api/summary/monthly?${qs}`)).then((r) => r.json()),
       fetch(api(`/api/summary/categories?${qs}`)).then((r) => r.json()),
+      fetch(api(`/api/summary/transactions?${qs}`)).then((r) => r.json()),
     ]);
+    if (requestId !== dashboardRequestId) return;
+
+    renderDashboardTransactions("incoming", transactions.incoming);
+    renderDashboardTransactions("expenses", transactions.expenses);
 
     document.getElementById("stat-income").textContent = fmtMoney(totals.income);
     document.getElementById("stat-expense").textContent = fmtMoney(totals.expense);
@@ -177,6 +186,25 @@
         ],
       },
       options: { responsive: true },
+    });
+  }
+
+  function renderDashboardTransactions(direction, items) {
+    const tbody = document.getElementById(`dash-${direction}-rows`);
+    tbody.replaceChildren();
+    document.getElementById(`dash-${direction}-status`).textContent = items.length
+      ? `${items.length} transaction(s)`
+      : `No ${direction === "incoming" ? "incoming transactions" : "expenses"} match the selected filters.`;
+    items.forEach((tx) => {
+      const tr = document.createElement("tr");
+      for (const value of [tx.date, tx.account_name || tx.account || "Unassigned",
+        tx.description || "", tx.counterparty || "", tx.category_name || "Uncategorized"]) {
+        tr.insertCell().textContent = value;
+      }
+      const amount = tr.insertCell();
+      amount.textContent = fmtMoney(tx.amount);
+      amount.className = tx.amount > 0 ? "amount-pos" : "amount-neg";
+      tbody.appendChild(tr);
     });
   }
 
@@ -444,13 +472,32 @@
     catTbody.innerHTML = "";
     categories.forEach((c) => {
       const tr = document.createElement("tr");
-      tr.innerHTML = `
-        <td>${c.name}</td>
-        <td>${c.type}</td>
-        <td><span class="cat-badge" style="background:${c.color}">&nbsp;&nbsp;&nbsp;</span></td>
-        <td class="row-actions"><button class="danger" data-id="${c.id}">Delete</button></td>
-      `;
-      tr.querySelector(".danger").addEventListener("click", async () => {
+      tr.insertCell().textContent = c.name;
+      tr.insertCell().textContent = c.type;
+      const badge = document.createElement("span");
+      badge.className = "cat-badge";
+      badge.style.background = c.color;
+      badge.textContent = "\u00a0\u00a0\u00a0";
+      tr.insertCell().appendChild(badge);
+      const actions = tr.insertCell();
+      actions.className = "row-actions";
+      const edit = document.createElement("button");
+      edit.textContent = "Edit";
+      edit.setAttribute("aria-label", `Edit category ${c.name}`);
+      edit.addEventListener("click", () => {
+        editingCategoryId = c.id;
+        document.getElementById("category-dialog-name").value = c.name;
+        document.getElementById("category-dialog-type").value = c.type;
+        document.getElementById("category-dialog-color").value = c.color;
+        document.getElementById("category-dialog-error").textContent = "";
+        document.getElementById("category-dialog").showModal();
+      });
+      actions.appendChild(edit);
+      const remove = document.createElement("button");
+      remove.className = "danger";
+      remove.textContent = "Delete";
+      actions.appendChild(remove);
+      remove.addEventListener("click", async () => {
         if (!confirm(`Delete category "${c.name}"? Transactions keep their data but lose this category.`)) return;
         await fetch(api(`/api/categories/${c.id}`), { method: "DELETE" });
         loadCategoriesAndRules();
@@ -515,6 +562,38 @@
       ruleTbody.appendChild(tr);
     });
   }
+
+  document.getElementById("category-dialog-cancel").addEventListener("click", () => {
+    document.getElementById("category-dialog").close();
+  });
+  document.getElementById("category-dialog-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    if (editingCategoryId === null) return;
+    const save = document.getElementById("category-dialog-save");
+    const error = document.getElementById("category-dialog-error");
+    error.textContent = "";
+    save.disabled = true;
+    try {
+      const response = await fetch(api(`/api/categories/${editingCategoryId}`), {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: document.getElementById("category-dialog-name").value.trim(),
+          type: document.getElementById("category-dialog-type").value,
+          color: document.getElementById("category-dialog-color").value,
+        }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Could not save category");
+      await loadCategoriesAndRules();
+      document.getElementById("category-dialog").close();
+      loadDashboard();
+    } catch (err) {
+      error.textContent = err.message;
+    } finally {
+      save.disabled = false;
+    }
+  });
 
   document.getElementById("add-category").addEventListener("click", async () => {
     const name = document.getElementById("new-cat-name").value.trim();

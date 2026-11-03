@@ -6,6 +6,8 @@ and visualize online banking transactions.
 import csv
 import io
 import os
+import re
+import sqlite3
 
 from flask import Flask, jsonify, request, send_file, render_template, Response
 
@@ -69,15 +71,33 @@ def create_category():
 
 @app.route("/api/categories/<int:category_id>", methods=["PUT"])
 def update_category(category_id):
-    data = request.get_json(force=True)
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({"error": "a JSON object is required"}), 400
     conn = db.get_db()
-    conn.execute(
-        "UPDATE categories SET name = ?, type = ?, color = ? WHERE id = ?",
-        (data.get("name"), data.get("type"), data.get("color"), category_id),
-    )
-    conn.commit()
-    conn.close()
-    return jsonify({"ok": True})
+    try:
+        existing = conn.execute("SELECT * FROM categories WHERE id = ?", (category_id,)).fetchone()
+        if existing is None:
+            return jsonify({"error": "category not found"}), 404
+        name = data.get("name", existing["name"])
+        ctype = data.get("type", existing["type"])
+        color = data.get("color", existing["color"])
+        if not isinstance(name, str) or not name.strip():
+            return jsonify({"error": "name is required"}), 400
+        if ctype not in ("income", "expense", "transfer"):
+            return jsonify({"error": "type must be income, expense, or transfer"}), 400
+        if not isinstance(color, str) or not re.fullmatch(r"#[0-9a-fA-F]{6}", color):
+            return jsonify({"error": "color must be a six-digit hex color (e.g. #7f8c8d)"}), 400
+        conn.execute(
+            "UPDATE categories SET name = ?, type = ?, color = ? WHERE id = ?",
+            (name.strip(), ctype, color, category_id),
+        )
+        conn.commit()
+        return jsonify({"ok": True})
+    except sqlite3.IntegrityError:
+        return jsonify({"error": "a category with that name already exists"}), 400
+    finally:
+        conn.close()
 
 
 @app.route("/api/categories/<int:category_id>", methods=["DELETE"])
@@ -516,6 +536,30 @@ def summary_years():
     ).fetchall()
     conn.close()
     return jsonify([r["year"] for r in rows])
+
+
+@app.route("/api/summary/transactions", methods=["GET"])
+def summary_transactions():
+    """All incoming and expense transactions matching the dashboard filters."""
+    where, params = _build_filters(request.args)
+    where_clause = f"{where} AND amount != 0" if where else "WHERE amount != 0"
+    conn = db.get_db()
+    rows = conn.execute(
+        f"""SELECT transactions.id, transactions.date, transactions.amount,
+                   transactions.account, transactions.description, transactions.counterparty,
+                   categories.name AS category_name,
+                   (SELECT name FROM accounts WHERE accounts.account = transactions.account) AS account_name
+            FROM transactions
+            LEFT JOIN categories ON categories.id = transactions.category_id
+            {where_clause}
+            ORDER BY transactions.date DESC, transactions.id DESC""",
+        params,
+    ).fetchall()
+    conn.close()
+    return jsonify({
+        "incoming": [dict(r) for r in rows if r["amount"] > 0],
+        "expenses": [dict(r) for r in rows if r["amount"] < 0],
+    })
 
 
 @app.route("/api/summary/monthly", methods=["GET"])
