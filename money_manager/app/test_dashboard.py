@@ -105,10 +105,11 @@ class DashboardTest(unittest.TestCase):
 
     def test_dashboard_controls_and_export_date_filters(self):
         page = self.client.get("/", headers={"X-Ingress-Path": "/ingress/money"}).get_data(as_text=True)
-        for control in ("dash-year", "dash-month", "dash-exclude-category", "export-from", "export-to"):
+        for control in ("dash-year", "dash-month", "dash-category", "dash-category-mode", "export-from", "export-to"):
             self.assertIn(f'id="{control}"', page)
         self.assertNotIn('id="dash-from"', page)
         self.assertNotIn('id="dash-to"', page)
+        self.assertNotIn('id="dash-refresh"', page)
         self.assertIn('/ingress/money/static/js/app.js', page)
         exported = self.client.get("/api/export?from=2024-02-29&to=2024-03-01").data.decode("utf-8-sig")
         self.assertEqual(len(exported.splitlines()), 3)
@@ -161,6 +162,24 @@ class DashboardTest(unittest.TestCase):
         lists = self.summary("transactions", year="2026")
         self.assertEqual(len(lists["incoming"]), 501)
         self.assertEqual(len(lists["expenses"]), 501)
+
+    def test_category_inclusion_applies_to_all_dashboard_data(self):
+        filters = {"year": "2024", "month": "02", "category_id": self.groceries_id}
+        self.assertEqual(self.summary("totals", **filters), {
+            "count": 2, "income": 0, "expense": 60, "net": -60, "uncategorized": 0,
+        })
+        self.assertEqual(self.summary("monthly", **filters), [
+            {"month": "2024-02", "income": 0, "expense": 60},
+        ])
+        categories = self.summary("categories", **filters)
+        self.assertEqual([(r["category"], r["total"]) for r in categories], [("Groceries", 60)])
+        lists = self.summary("transactions", **filters)
+        self.assertEqual(lists["incoming"], [])
+        self.assertEqual(len(lists["expenses"]), 2)
+        self.assertTrue(all(tx["category_name"] == "Groceries" for tx in lists["expenses"]))
+        self.assertEqual(self.summary("totals", **dict(filters, account="BE111"))["expense"], 20)
+        self.assertEqual(self.summary("totals", **dict(filters, category_id=self.savings_id))["income"], 200)
+        self.assertEqual(self.summary("totals", **dict(filters, category_id=""))["expense"], 290)
 
 
 if __name__ == "__main__":

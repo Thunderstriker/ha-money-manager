@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.1
+
+- Choose Include only or Exclude for the dashboard category filter, keeping Exclude Savings & Transfers as the default.
+- Select the current year and month when opening the dashboard, even when that period has no transactions.
+- Remove the dashboard Refresh button; filter changes automatically update totals, charts, and transaction lists.
+
 ## 0.5.0
 
 - Edit category names, types, and colors from Categories & Rules without losing linked transactions or rules.

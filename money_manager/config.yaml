@@ -1,5 +1,5 @@
 name: "Money Manager"
-version: "0.5.0"
+version: "0.5.1"
 slug: "money_manager"
 description: "Import, categorize and visualize your online banking transactions"
 url: "https://github.com/Thunderstriker/ha-money-manager/tree/main/money_manager"

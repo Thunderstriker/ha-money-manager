@@ -11,6 +11,7 @@
   let ruleSource = null;
   let editingCategoryId = null;
   let dashboardCategoryInitialized = false;
+  let dashboardPeriodInitialized = false;
   let dashboardRequestId = 0;
 
   // ---------------------------------------------------------------- tabs --
@@ -113,10 +114,19 @@
     const years = await fetch(api("/api/summary/years")).then((r) => r.json());
     const select = document.getElementById("dash-year");
     const current = select.value;
+    const now = new Date();
+    const currentYear = String(now.getFullYear());
+    const availableYears = [...new Set([...years, currentYear, ...(current ? [current] : [])])].sort().reverse();
     select.replaceChildren(new Option("All years", ""));
-    years.forEach((year) => select.add(new Option(year, year)));
-    select.value = years.includes(current) ? current : "";
+    availableYears.forEach((year) => select.add(new Option(year, year)));
     const month = document.getElementById("dash-month");
+    if (!dashboardPeriodInitialized) {
+      select.value = currentYear;
+      month.value = String(now.getMonth() + 1).padStart(2, "0");
+      dashboardPeriodInitialized = true;
+    } else {
+      select.value = current;
+    }
     month.disabled = !select.value;
     if (month.disabled) month.value = "";
   }
@@ -127,13 +137,14 @@
     if (requestId !== dashboardRequestId) return;
     const year = document.getElementById("dash-year").value;
     const month = document.getElementById("dash-month").value;
-    const excludeCategory = document.getElementById("dash-exclude-category").value;
+    const category = document.getElementById("dash-category").value;
+    const categoryMode = document.getElementById("dash-category-mode").value;
     const qs = new URLSearchParams();
     const account = document.getElementById("dash-account").value;
     if (account) qs.set("account", account);
     if (year) qs.set("year", year);
     if (year && month) qs.set("month", month);
-    if (excludeCategory) qs.set("exclude_category_id", excludeCategory);
+    if (category) qs.set(categoryMode === "include" ? "category_id" : "exclude_category_id", category);
 
     const [totals, monthly, byCategory, transactions] = await Promise.all([
       fetch(api(`/api/summary/totals?${qs}`)).then((r) => r.json()),
@@ -208,24 +219,23 @@
     });
   }
 
-  document.getElementById("dash-refresh").addEventListener("click", loadDashboard);
   document.getElementById("dash-account").addEventListener("change", loadDashboard);
-  ["dash-year", "dash-month", "dash-exclude-category"].forEach((id) => {
+  ["dash-year", "dash-month", "dash-category", "dash-category-mode"].forEach((id) => {
     document.getElementById(id).addEventListener("change", loadDashboard);
   });
 
   // -------------------------------------------------------- transactions --
   async function loadCategoryOptionsForFilter() {
-    const exclude = document.getElementById("dash-exclude-category");
-    const current = exclude.value;
-    exclude.replaceChildren(new Option("None", ""));
-    categories.forEach((c) => exclude.add(new Option(c.name, c.id)));
+    const category = document.getElementById("dash-category");
+    const current = category.value;
+    category.replaceChildren(new Option("None (all categories)", ""));
+    categories.forEach((c) => category.add(new Option(c.name, c.id)));
     if (!dashboardCategoryInitialized) {
       const savings = categories.find((c) => c.name.toLowerCase() === "savings & transfers");
-      exclude.value = savings ? String(savings.id) : "";
+      category.value = savings ? String(savings.id) : "";
       dashboardCategoryInitialized = true;
     } else {
-      exclude.value = [...exclude.options].some((option) => option.value === current) ? current : "";
+      category.value = [...category.options].some((option) => option.value === current) ? current : "";
     }
     const select = document.getElementById("tx-category-filter");
     select.innerHTML = '<option value="">All categories</option>';

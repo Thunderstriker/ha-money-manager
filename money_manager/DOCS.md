@@ -31,10 +31,12 @@ Import, categorize and visualize your online banking transactions, directly from
   - Separate incoming transaction and expense lists show every transaction matching
     the dashboard filters, newest first, with account, description, counterparty,
     category, and amount. Scroll within each list to see all rows.
-  - Filter by year, or choose a year and month. **All years** shows the full history;
-    **All months** shows the entire selected year.
-  - Exclude a category from all dashboard totals and charts. **Savings & Transfers**
-    is excluded by default; choose **None** to include every category.
+  - Filter by year, or choose a year and month. The current year and month are
+    selected on opening, including when that period has no transactions.
+    **All years** shows the full history; **All months** shows the entire selected year.
+  - Choose **Include only** or **Exclude** with a category to filter all dashboard
+    totals, charts, and transaction lists. **Exclude Savings & Transfers** is the
+    default; choose **None (all categories)** to turn off category filtering.
 - **Export** the currently filtered transactions back out to CSV.
 - **Multiple accounts**: import statements from separate accounts, filter the dashboard,
   transaction list and export by account, or select **Unassigned** for transactions
@@ -70,7 +72,7 @@ Import, categorize and visualize your online banking transactions, directly from
 Existing transactions are kept as-is when upgrading; those without an account appear
 under **Unassigned**. Categorize cross-account transfers as **Savings & Transfers**
 to exclude them from the dashboard by default. They remain visible in the transaction
-list and exports; selecting **None** under **Exclude category** includes them again.
+list and exports; selecting **None (all categories)** under **Category** includes them again.
 Display names are stored in the same SQLite database as your transactions; CSV export
 retains the original account identifiers, not the friendly names.
 

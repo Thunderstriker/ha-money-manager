@@ -42,8 +42,13 @@
             <option value="12">December</option>
           </select>
         </label>
-        <label>Exclude category <select id="dash-exclude-category"><option value="">None</option></select></label>
-        <button id="dash-refresh">Refresh</button>
+        <label>Category filter
+          <select id="dash-category-mode">
+            <option value="exclude">Exclude</option>
+            <option value="include">Include only</option>
+          </select>
+        </label>
+        <label>Category <select id="dash-category"><option value="">None (all categories)</option></select></label>
       </div>
 
       <div class="cards">
