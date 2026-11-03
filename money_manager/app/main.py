@@ -189,6 +189,21 @@ def apply_rules():
 # Transactions
 # ---------------------------------------------------------------------------
 
+@app.route("/api/accounts", methods=["GET"])
+def list_accounts():
+    """List accounts already attached to transactions, including unassigned rows."""
+    conn = db.get_db()
+    rows = conn.execute(
+        """SELECT account, COUNT(*) AS count FROM transactions
+           GROUP BY account ORDER BY account"""
+    ).fetchall()
+    conn.close()
+    return jsonify([dict(r) for r in rows])
+
+
+def _normalize_account(value):
+    return "".join(value.split()).upper()
+
 def _build_filters(args):
     clauses = []
     params = []
@@ -203,6 +218,11 @@ def _build_filters(args):
         params.append(args["category_id"])
     if args.get("uncategorized") == "1":
         clauses.append("category_id IS NULL")
+    if args.get("account") == "__unassigned__":
+        clauses.append("account = ''")
+    elif args.get("account"):
+        clauses.append("account = ?")
+        params.append(args["account"])
     if args.get("search"):
         clauses.append("(description LIKE ? OR counterparty LIKE ?)")
         like = f"%{args['search']}%"
@@ -237,6 +257,10 @@ def list_transactions():
 @app.route("/api/transactions/<int:tx_id>", methods=["PUT"])
 def update_transaction(tx_id):
     data = request.get_json(force=True)
+    if "account" in data:
+        if not isinstance(data["account"], str):
+            return jsonify({"error": "account must be a string"}), 400
+        data["account"] = _normalize_account(data["account"])
     fields = []
     params = []
     for key in ("date", "amount", "description", "counterparty", "iban", "account", "category_id"):
@@ -271,11 +295,17 @@ def import_file():
     if "file" not in request.files:
         return jsonify({"error": "no file provided"}), 400
     file = request.files["file"]
+    account_override = request.form.get("account", "")
+    if account_override and not account_override.strip():
+        return jsonify({"error": "account must not be blank"}), 400
+    account_override = _normalize_account(account_override)
     raw = file.read()
     try:
         parsed = importers.parse_file(raw, file.filename)
     except Exception as exc:  # noqa: BLE001
         return jsonify({"error": f"could not parse file: {exc}"}), 400
+    for tx in parsed:
+        tx["account"] = account_override or _normalize_account(tx.get("account", ""))
 
     conn = db.get_db()
     rules = cat_engine.sorted_rules(conn.execute("SELECT * FROM rules").fetchall())
@@ -349,14 +379,17 @@ def export_csv():
 @app.route("/api/summary/monthly", methods=["GET"])
 def summary_monthly():
     """Income/expense totals per month (YYYY-MM)."""
+    where, params = _build_filters(request.args)
     conn = db.get_db()
     rows = conn.execute(
-        """SELECT substr(date, 1, 7) AS month,
+        f"""SELECT substr(date, 1, 7) AS month,
                   SUM(CASE WHEN amount > 0 THEN amount ELSE 0 END) AS income,
                   SUM(CASE WHEN amount < 0 THEN -amount ELSE 0 END) AS expense
            FROM transactions
+           {where}
            GROUP BY month
-           ORDER BY month ASC"""
+           ORDER BY month ASC""",
+        params,
     ).fetchall()
     conn.close()
     return jsonify([dict(r) for r in rows])
@@ -366,8 +399,7 @@ def summary_monthly():
 def summary_categories():
     """Expense totals per category, optionally filtered by date range / month."""
     where, params = _build_filters(request.args)
-    extra = "amount < 0" if not where else "amount < 0"
-    where_clause = f"{where} AND {extra}" if where else f"WHERE {extra}"
+    where_clause = f"{where} AND amount < 0" if where else "WHERE amount < 0"
     conn = db.get_db()
     rows = conn.execute(
         f"""SELECT COALESCE(categories.name, 'Uncategorized') AS category,
@@ -397,8 +429,9 @@ def summary_totals():
             {where}""",
         params,
     ).fetchone()
+    uncategorized_where = f"{where} AND category_id IS NULL" if where else "WHERE category_id IS NULL"
     uncategorized = conn.execute(
-        "SELECT COUNT(*) AS c FROM transactions WHERE category_id IS NULL"
+        f"SELECT COUNT(*) AS c FROM transactions {uncategorized_where}", params
     ).fetchone()["c"]
     conn.close()
     data = dict(row)

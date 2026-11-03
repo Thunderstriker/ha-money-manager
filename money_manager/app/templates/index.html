@@ -22,6 +22,7 @@
     <!-- Dashboard -->
     <section id="tab-dashboard" class="tab-panel active">
       <div class="filter-bar">
+        <label>Account <select id="dash-account"><option value="">All accounts</option></select></label>
         <label>From <input type="date" id="dash-from" /></label>
         <label>To <input type="date" id="dash-to" /></label>
         <button id="dash-refresh">Refresh</button>
@@ -50,6 +51,7 @@
     <section id="tab-transactions" class="tab-panel">
       <div class="filter-bar">
         <input type="text" id="tx-search" placeholder="Search description / counterparty" />
+        <select id="tx-account"><option value="">All accounts</option></select>
         <select id="tx-category-filter"><option value="">All categories</option></select>
         <label><input type="checkbox" id="tx-uncategorized-only" /> Uncategorized only</label>
         <button id="tx-refresh">Search</button>
@@ -57,7 +59,7 @@
       </div>
       <table class="tx-table">
         <thead>
-          <tr><th>Date</th><th>Description</th><th>Counterparty</th><th>Amount</th><th>Category</th><th></th></tr>
+          <tr><th>Date</th><th>Account</th><th>Description</th><th>Counterparty</th><th>Amount</th><th>Category</th><th></th></tr>
         </thead>
         <tbody id="tx-rows"></tbody>
       </table>
@@ -72,14 +74,17 @@
     <section id="tab-importexport" class="tab-panel">
       <div class="panel-box">
         <h3>Import transactions</h3>
-        <p>Supports CSV exports from most banks (ING, ABN AMRO, Rabobank, bunq, ...) and ISO 20022 <code>camt.053</code> XML statements.</p>
+        <p>Supports CSV, Argenta XLSX, and ISO 20022 <code>camt.053</code> XML statements. The account in the file is used unless you specify an override below.</p>
         <input type="file" id="import-file" accept=".csv,.xml,.txt,.xlsx,.xls" />
+        <label>Account override (optional) <input type="text" id="import-account" list="known-accounts" placeholder="e.g. BE12345678901234" autocomplete="off" /></label>
+        <datalist id="known-accounts"></datalist>
         <button id="import-btn">Import</button>
         <div id="import-result" class="result-box"></div>
       </div>
       <div class="panel-box">
         <h3>Export transactions</h3>
-        <p>Export the currently filtered set of transactions (date range below) to CSV.</p>
+        <p>Export transactions for one account or all accounts to CSV.</p>
+        <label>Account <select id="export-account"><option value="">All accounts</option></select></label>
         <label>From <input type="date" id="export-from" /></label>
         <label>To <input type="date" id="export-to" /></label>
         <button id="export-btn">Download CSV</button>

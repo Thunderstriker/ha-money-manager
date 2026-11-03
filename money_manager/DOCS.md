@@ -19,13 +19,28 @@ Import, categorize and visualize your online banking transactions, directly from
   - Expense breakdown by category (doughnut chart).
   - Totals cards: income, expenses, net, and uncategorized count.
 - **Export** the currently filtered transactions back out to CSV.
+- **Multiple accounts**: import statements from separate accounts, filter the dashboard,
+  transaction list and export by account, or select **Unassigned** for transactions
+  whose original file did not specify an account.
 
 ## Usage
 
 1. Start the add-on and open its Web UI (sidebar panel, via Ingress).
-2. Go to **Import / Export**, choose a CSV or camt.053 XML export from your bank, and click **Import**.
+2. Go to **Import / Export**, choose a CSV, XLSX or camt.053 XML export from your bank, and click **Import**.
+   If the export does not identify your own account, enter its IBAN in **Account override**.
+   This also lets you override an account identifier in the file; leave it empty to use the file's account.
+   Import each account's export separately. The account identifier is normalized (spaces removed,
+   uppercase), and is part of the duplicate-detection key. To avoid duplicates on re-import,
+   use the same override each time for account-less files.
 3. Go to **Categories & Rules** to review/add categories and matching rules. Rules you add are applied to future imports automatically; use **Apply rules to uncategorized** (Transactions tab) to apply them retroactively.
 4. Check the **Dashboard** tab for charts and totals.
+5. Use the **Account** selector on the dashboard or transactions page to see one account,
+   all accounts, or unassigned transactions. Click an account in the transaction list
+   to reassign it (or clear the value). Export has its own account selector.
+
+Existing transactions are kept as-is when upgrading; those without an account appear
+under **Unassigned**. Cross-account transfers are currently counted on both sides
+when viewing all accounts; categorize them as transfers if appropriate.
 
 ## Configuration
 

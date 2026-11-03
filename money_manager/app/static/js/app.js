@@ -3,6 +3,7 @@
   const api = (path) => `${BASE}${path}`;
 
   let categories = [];
+  let accounts = [];
   let txOffset = 0;
   const txLimit = 50;
   let monthlyChart = null;
@@ -26,17 +27,39 @@
     return n.toLocaleString(undefined, { style: "currency", currency: "EUR" });
   }
 
+  async function loadAccounts() {
+    accounts = await fetch(api("/api/accounts")).then((r) => r.json());
+    ["dash-account", "tx-account", "export-account"].forEach((id) => {
+      const select = document.getElementById(id);
+      const current = select.value;
+      select.replaceChildren(new Option("All accounts", ""));
+      accounts.forEach(({ account, count }) => {
+        select.add(new Option(`${account || "Unassigned"} (${count})`, account || "__unassigned__"));
+      });
+      select.value = [...select.options].some((option) => option.value === current) ? current : "";
+    });
+    const list = document.getElementById("known-accounts");
+    list.replaceChildren();
+    accounts.filter((item) => item.account).forEach(({ account }) => {
+      const option = document.createElement("option");
+      option.value = account;
+      list.appendChild(option);
+    });
+  }
+
   // ----------------------------------------------------------- dashboard --
   async function loadDashboard() {
     const from = document.getElementById("dash-from").value;
     const to = document.getElementById("dash-to").value;
     const qs = new URLSearchParams();
+    const account = document.getElementById("dash-account").value;
+    if (account) qs.set("account", account);
     if (from) qs.set("from", from);
     if (to) qs.set("to", to);
 
     const [totals, monthly, byCategory] = await Promise.all([
       fetch(api(`/api/summary/totals?${qs}`)).then((r) => r.json()),
-      fetch(api(`/api/summary/monthly`)).then((r) => r.json()),
+      fetch(api(`/api/summary/monthly?${qs}`)).then((r) => r.json()),
       fetch(api(`/api/summary/categories?${qs}`)).then((r) => r.json()),
     ]);
 
@@ -84,6 +107,7 @@
   }
 
   document.getElementById("dash-refresh").addEventListener("click", loadDashboard);
+  document.getElementById("dash-account").addEventListener("change", loadDashboard);
 
   // -------------------------------------------------------- transactions --
   async function loadCategoryOptionsForFilter() {
@@ -100,11 +124,13 @@
   async function loadTransactions() {
     const search = document.getElementById("tx-search").value;
     const categoryId = document.getElementById("tx-category-filter").value;
+    const account = document.getElementById("tx-account").value;
     const uncategorized = document.getElementById("tx-uncategorized-only").checked;
 
     const qs = new URLSearchParams();
     if (search) qs.set("search", search);
     if (categoryId) qs.set("category_id", categoryId);
+    if (account) qs.set("account", account);
     if (uncategorized) qs.set("uncategorized", "1");
     qs.set("limit", txLimit);
     qs.set("offset", txOffset);
@@ -136,16 +162,42 @@
         });
       });
 
-      tr.innerHTML = `
-        <td>${tx.date}</td>
-        <td>${tx.description || ""}</td>
-        <td>${tx.counterparty || ""}</td>
-        <td class="${amountClass}">${fmtMoney(tx.amount)}</td>
-        <td class="cat-cell"></td>
-        <td class="row-actions"><button class="danger" data-id="${tx.id}">Delete</button></td>
-      `;
-      tr.querySelector(".cat-cell").appendChild(catSelect);
-      tr.querySelector(".danger").addEventListener("click", async () => {
+      const addCell = (text) => {
+        const cell = tr.insertCell();
+        cell.textContent = text;
+        return cell;
+      };
+      addCell(tx.date);
+      const accountCell = addCell("");
+      const accountButton = document.createElement("button");
+      accountButton.textContent = tx.account || "Unassigned";
+      accountButton.title = "Click to change account";
+      accountButton.addEventListener("click", async () => {
+        const value = prompt("Account identifier (empty for unassigned):", tx.account || "");
+        if (value === null) return;
+        const response = await fetch(api(`/api/transactions/${tx.id}`), {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ account: value }),
+        });
+        if (!response.ok) {
+          alert("Could not change account.");
+          return;
+        }
+        await loadAccounts();
+        loadTransactions();
+        loadDashboard();
+      });
+      accountCell.appendChild(accountButton);
+      addCell(tx.description || "");
+      addCell(tx.counterparty || "");
+      addCell(fmtMoney(tx.amount)).className = amountClass;
+      addCell("").appendChild(catSelect);
+      const deleteButton = document.createElement("button");
+      deleteButton.className = "danger";
+      deleteButton.textContent = "Delete";
+      addCell("").appendChild(deleteButton);
+      deleteButton.addEventListener("click", async () => {
         if (!confirm("Delete this transaction?")) return;
         await fetch(api(`/api/transactions/${tx.id}`), { method: "DELETE" });
         loadTransactions();
@@ -158,6 +210,10 @@
   }
 
   document.getElementById("tx-refresh").addEventListener("click", () => {
+    txOffset = 0;
+    loadTransactions();
+  });
+  document.getElementById("tx-account").addEventListener("change", () => {
     txOffset = 0;
     loadTransactions();
   });
@@ -190,6 +246,8 @@
     }
     const formData = new FormData();
     formData.append("file", fileInput.files[0]);
+    const accountOverride = document.getElementById("import-account").value.trim();
+    if (accountOverride) formData.append("account", accountOverride);
     resultBox.textContent = "Importing...";
     try {
       const res = await fetch(api(`/api/import`), { method: "POST", body: formData }).then((r) => r.json());
@@ -199,6 +257,7 @@
         resultBox.textContent =
           `Imported ${res.inserted} new transaction(s), skipped ${res.duplicates} duplicate(s) ` +
           `out of ${res.total_parsed} parsed.`;
+        await loadAccounts();
         loadDashboard();
       }
     } catch (err) {
@@ -210,6 +269,8 @@
     const from = document.getElementById("export-from").value;
     const to = document.getElementById("export-to").value;
     const qs = new URLSearchParams();
+    const account = document.getElementById("export-account").value;
+    if (account) qs.set("account", account);
     if (from) qs.set("from", from);
     if (to) qs.set("to", to);
     window.location.href = api(`/api/export?${qs}`);
@@ -300,6 +361,7 @@
   (async function init() {
     categories = await fetch(api(`/api/categories`)).then((r) => r.json());
     await loadCategoryOptionsForFilter();
+    await loadAccounts();
     loadDashboard();
   })();
 })();
