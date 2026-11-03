@@ -1,0 +1,6 @@
+* text=auto eol=lf
+*.png binary
+*.jpg binary
+*.ico binary
+money_manager/rootfs/**/run text eol=lf
+money_manager/rootfs/**/finish text eol=lf

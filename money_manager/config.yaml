@@ -1,0 +1,30 @@
+name: "Money Manager"
+version: "0.1.0"
+slug: "money_manager"
+description: "Import, categorize and visualize your online banking transactions"
+url: "https://github.com/Thunderstriker/ha-money-manager/tree/main/money_manager"
+arch:
+  - aarch64
+  - amd64
+  - armhf
+  - armv7
+  - i386
+startup: application
+boot: auto
+init: false
+ingress: true
+ingress_port: 8099
+ingress_stream: false
+panel_icon: mdi:cash-multiple
+panel_title: Money Manager
+hassio_api: false
+homeassistant_api: false
+map:
+  - type: data
+    read_only: false
+options:
+  log_level: info
+  currency: "EUR"
+schema:
+  log_level: list(trace|debug|info|notice|warning|error|fatal)?
+  currency: str?

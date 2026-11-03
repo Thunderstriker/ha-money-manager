@@ -1,0 +1,22 @@
+#!/usr/bin/with-contenv bashio
+# shellcheck shell=bash
+
+LOG_LEVEL=$(bashio::config 'log_level' 'info')
+CURRENCY=$(bashio::config 'currency' 'EUR')
+
+bashio::log.level "${LOG_LEVEL}"
+bashio::log.info "Starting Money Manager..."
+
+export MONEYMANAGER_DATA="/data"
+export MONEYMANAGER_CURRENCY="${CURRENCY}"
+export MONEYMANAGER_INGRESS_PORT="8099"
+
+cd /opt/moneymanager/app || exit 1
+
+exec python3 -m gunicorn \
+    --bind "0.0.0.0:${MONEYMANAGER_INGRESS_PORT}" \
+    --workers 2 \
+    --threads 4 \
+    --timeout 120 \
+    --access-logfile - \
+    "main:app"

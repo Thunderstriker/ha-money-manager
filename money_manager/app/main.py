@@ -1,0 +1,419 @@
+"""Money Manager - Flask backend.
+
+Provides an ingress-friendly web UI + JSON API to import, categorize, export
+and visualize online banking transactions.
+"""
+import csv
+import io
+import os
+
+from flask import Flask, jsonify, request, send_file, render_template, Response
+
+import db
+import importers
+import categorize as cat_engine
+
+app = Flask(__name__)
+app.config["MAX_CONTENT_LENGTH"] = 32 * 1024 * 1024  # 32MB upload limit
+
+db.init_db()
+
+
+def ingress_prefix():
+    return request.headers.get("X-Ingress-Path", "")
+
+
+# ---------------------------------------------------------------------------
+# Frontend
+# ---------------------------------------------------------------------------
+
+@app.route("/")
+def index():
+    return render_template("index.html", ingress_path=ingress_prefix())
+
+
+# ---------------------------------------------------------------------------
+# Categories
+# ---------------------------------------------------------------------------
+
+@app.route("/api/categories", methods=["GET"])
+def list_categories():
+    conn = db.get_db()
+    rows = conn.execute("SELECT * FROM categories ORDER BY type, name").fetchall()
+    conn.close()
+    return jsonify([dict(r) for r in rows])
+
+
+@app.route("/api/categories", methods=["POST"])
+def create_category():
+    data = request.get_json(force=True)
+    name = (data.get("name") or "").strip()
+    ctype = data.get("type", "expense")
+    color = data.get("color", "#7f8c8d")
+    if not name:
+        return jsonify({"error": "name is required"}), 400
+    conn = db.get_db()
+    try:
+        cur = conn.execute(
+            "INSERT INTO categories(name, type, color) VALUES (?, ?, ?)",
+            (name, ctype, color),
+        )
+        conn.commit()
+        new_id = cur.lastrowid
+    except Exception as exc:  # noqa: BLE001
+        conn.close()
+        return jsonify({"error": str(exc)}), 400
+    conn.close()
+    return jsonify({"id": new_id}), 201
+
+
+@app.route("/api/categories/<int:category_id>", methods=["PUT"])
+def update_category(category_id):
+    data = request.get_json(force=True)
+    conn = db.get_db()
+    conn.execute(
+        "UPDATE categories SET name = ?, type = ?, color = ? WHERE id = ?",
+        (data.get("name"), data.get("type"), data.get("color"), category_id),
+    )
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/categories/<int:category_id>", methods=["DELETE"])
+def delete_category(category_id):
+    conn = db.get_db()
+    conn.execute("DELETE FROM categories WHERE id = ?", (category_id,))
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True})
+
+
+# ---------------------------------------------------------------------------
+# Rules
+# ---------------------------------------------------------------------------
+
+@app.route("/api/rules", methods=["GET"])
+def list_rules():
+    conn = db.get_db()
+    rows = conn.execute(
+        """SELECT rules.*, categories.name AS category_name
+           FROM rules JOIN categories ON categories.id = rules.category_id
+           ORDER BY priority ASC, rules.id ASC"""
+    ).fetchall()
+    conn.close()
+    return jsonify([dict(r) for r in rows])
+
+
+@app.route("/api/rules", methods=["POST"])
+def create_rule():
+    data = request.get_json(force=True)
+    conn = db.get_db()
+    cur = conn.execute(
+        "INSERT INTO rules(pattern, field, category_id, priority) VALUES (?, ?, ?, ?)",
+        (
+            data.get("pattern", "").strip(),
+            data.get("field", "any"),
+            data.get("category_id"),
+            data.get("priority", 100),
+        ),
+    )
+    conn.commit()
+    new_id = cur.lastrowid
+    conn.close()
+    return jsonify({"id": new_id}), 201
+
+
+@app.route("/api/rules/<int:rule_id>", methods=["PUT"])
+def update_rule(rule_id):
+    data = request.get_json(force=True)
+    conn = db.get_db()
+    conn.execute(
+        "UPDATE rules SET pattern = ?, field = ?, category_id = ?, priority = ? WHERE id = ?",
+        (
+            data.get("pattern", "").strip(),
+            data.get("field", "any"),
+            data.get("category_id"),
+            data.get("priority", 100),
+            rule_id,
+        ),
+    )
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/rules/<int:rule_id>", methods=["DELETE"])
+def delete_rule(rule_id):
+    conn = db.get_db()
+    conn.execute("DELETE FROM rules WHERE id = ?", (rule_id,))
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/rules/apply", methods=["POST"])
+def apply_rules():
+    """Re-run categorization rules. By default only on uncategorized transactions;
+    pass {"all": true} to re-apply to every transaction."""
+    data = request.get_json(silent=True) or {}
+    apply_all = bool(data.get("all"))
+
+    conn = db.get_db()
+    rules = cat_engine.sorted_rules(
+        conn.execute("SELECT * FROM rules").fetchall()
+    )
+    if apply_all:
+        rows = conn.execute("SELECT * FROM transactions").fetchall()
+    else:
+        rows = conn.execute(
+            "SELECT * FROM transactions WHERE category_id IS NULL"
+        ).fetchall()
+
+    updated = 0
+    for row in rows:
+        tx = dict(row)
+        category_id = cat_engine.categorize(tx, rules)
+        if category_id is not None:
+            conn.execute(
+                "UPDATE transactions SET category_id = ? WHERE id = ?",
+                (category_id, tx["id"]),
+            )
+            updated += 1
+    conn.commit()
+    conn.close()
+    return jsonify({"updated": updated})
+
+
+# ---------------------------------------------------------------------------
+# Transactions
+# ---------------------------------------------------------------------------
+
+def _build_filters(args):
+    clauses = []
+    params = []
+    if args.get("from"):
+        clauses.append("date >= ?")
+        params.append(args["from"])
+    if args.get("to"):
+        clauses.append("date <= ?")
+        params.append(args["to"])
+    if args.get("category_id"):
+        clauses.append("category_id = ?")
+        params.append(args["category_id"])
+    if args.get("uncategorized") == "1":
+        clauses.append("category_id IS NULL")
+    if args.get("search"):
+        clauses.append("(description LIKE ? OR counterparty LIKE ?)")
+        like = f"%{args['search']}%"
+        params.extend([like, like])
+    where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+    return where, params
+
+
+@app.route("/api/transactions", methods=["GET"])
+def list_transactions():
+    where, params = _build_filters(request.args)
+    limit = int(request.args.get("limit", 500))
+    offset = int(request.args.get("offset", 0))
+
+    conn = db.get_db()
+    rows = conn.execute(
+        f"""SELECT transactions.*, categories.name AS category_name, categories.color AS category_color
+            FROM transactions
+            LEFT JOIN categories ON categories.id = transactions.category_id
+            {where}
+            ORDER BY date DESC, id DESC
+            LIMIT ? OFFSET ?""",
+        params + [limit, offset],
+    ).fetchall()
+    total = conn.execute(
+        f"SELECT COUNT(*) AS c FROM transactions {where}", params
+    ).fetchone()["c"]
+    conn.close()
+    return jsonify({"items": [dict(r) for r in rows], "total": total})
+
+
+@app.route("/api/transactions/<int:tx_id>", methods=["PUT"])
+def update_transaction(tx_id):
+    data = request.get_json(force=True)
+    fields = []
+    params = []
+    for key in ("date", "amount", "description", "counterparty", "iban", "account", "category_id"):
+        if key in data:
+            fields.append(f"{key} = ?")
+            params.append(data[key])
+    if not fields:
+        return jsonify({"error": "no fields to update"}), 400
+    params.append(tx_id)
+    conn = db.get_db()
+    conn.execute(f"UPDATE transactions SET {', '.join(fields)} WHERE id = ?", params)
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/transactions/<int:tx_id>", methods=["DELETE"])
+def delete_transaction(tx_id):
+    conn = db.get_db()
+    conn.execute("DELETE FROM transactions WHERE id = ?", (tx_id,))
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True})
+
+
+# ---------------------------------------------------------------------------
+# Import / Export
+# ---------------------------------------------------------------------------
+
+@app.route("/api/import", methods=["POST"])
+def import_file():
+    if "file" not in request.files:
+        return jsonify({"error": "no file provided"}), 400
+    file = request.files["file"]
+    raw = file.read()
+    try:
+        parsed = importers.parse_file(raw, file.filename)
+    except Exception as exc:  # noqa: BLE001
+        return jsonify({"error": f"could not parse file: {exc}"}), 400
+
+    conn = db.get_db()
+    rules = cat_engine.sorted_rules(conn.execute("SELECT * FROM rules").fetchall())
+
+    inserted = 0
+    duplicates = 0
+    for tx in parsed:
+        tx_hash = importers.compute_hash(tx)
+        existing = conn.execute(
+            "SELECT id FROM transactions WHERE import_hash = ?", (tx_hash,)
+        ).fetchone()
+        if existing:
+            duplicates += 1
+            continue
+        category_id = cat_engine.categorize(tx, rules)
+        conn.execute(
+            """INSERT INTO transactions
+               (date, amount, currency, description, counterparty, iban, account,
+                category_id, import_hash, source_file, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                tx["date"], tx["amount"], tx.get("currency", "EUR"),
+                tx.get("description", ""), tx.get("counterparty", ""),
+                tx.get("iban", ""), tx.get("account", ""),
+                category_id, tx_hash, file.filename, db.now_iso(),
+            ),
+        )
+        inserted += 1
+    conn.commit()
+    conn.close()
+    return jsonify({"inserted": inserted, "duplicates": duplicates, "total_parsed": len(parsed)})
+
+
+@app.route("/api/export", methods=["GET"])
+def export_csv():
+    where, params = _build_filters(request.args)
+    conn = db.get_db()
+    rows = conn.execute(
+        f"""SELECT transactions.date, transactions.amount, transactions.currency,
+                   transactions.description, transactions.counterparty, transactions.iban,
+                   transactions.account, categories.name AS category
+            FROM transactions
+            LEFT JOIN categories ON categories.id = transactions.category_id
+            {where}
+            ORDER BY date ASC""",
+        params,
+    ).fetchall()
+    conn.close()
+
+    buffer = io.StringIO()
+    writer = csv.writer(buffer)
+    writer.writerow(["date", "amount", "currency", "description", "counterparty", "iban", "account", "category"])
+    for r in rows:
+        writer.writerow([r["date"], r["amount"], r["currency"], r["description"],
+                          r["counterparty"], r["iban"], r["account"], r["category"] or ""])
+
+    mem = io.BytesIO(buffer.getvalue().encode("utf-8-sig"))
+    mem.seek(0)
+    return send_file(
+        mem,
+        mimetype="text/csv",
+        as_attachment=True,
+        download_name="moneymanager_export.csv",
+    )
+
+
+# ---------------------------------------------------------------------------
+# Summary / visualization data
+# ---------------------------------------------------------------------------
+
+@app.route("/api/summary/monthly", methods=["GET"])
+def summary_monthly():
+    """Income/expense totals per month (YYYY-MM)."""
+    conn = db.get_db()
+    rows = conn.execute(
+        """SELECT substr(date, 1, 7) AS month,
+                  SUM(CASE WHEN amount > 0 THEN amount ELSE 0 END) AS income,
+                  SUM(CASE WHEN amount < 0 THEN -amount ELSE 0 END) AS expense
+           FROM transactions
+           GROUP BY month
+           ORDER BY month ASC"""
+    ).fetchall()
+    conn.close()
+    return jsonify([dict(r) for r in rows])
+
+
+@app.route("/api/summary/categories", methods=["GET"])
+def summary_categories():
+    """Expense totals per category, optionally filtered by date range / month."""
+    where, params = _build_filters(request.args)
+    extra = "amount < 0" if not where else "amount < 0"
+    where_clause = f"{where} AND {extra}" if where else f"WHERE {extra}"
+    conn = db.get_db()
+    rows = conn.execute(
+        f"""SELECT COALESCE(categories.name, 'Uncategorized') AS category,
+                   COALESCE(categories.color, '#7f8c8d') AS color,
+                   SUM(-transactions.amount) AS total
+            FROM transactions
+            LEFT JOIN categories ON categories.id = transactions.category_id
+            {where_clause}
+            GROUP BY category, color
+            ORDER BY total DESC""",
+        params,
+    ).fetchall()
+    conn.close()
+    return jsonify([dict(r) for r in rows])
+
+
+@app.route("/api/summary/totals", methods=["GET"])
+def summary_totals():
+    where, params = _build_filters(request.args)
+    conn = db.get_db()
+    row = conn.execute(
+        f"""SELECT
+                COUNT(*) AS count,
+                SUM(CASE WHEN amount > 0 THEN amount ELSE 0 END) AS income,
+                SUM(CASE WHEN amount < 0 THEN -amount ELSE 0 END) AS expense
+            FROM transactions
+            {where}""",
+        params,
+    ).fetchone()
+    uncategorized = conn.execute(
+        "SELECT COUNT(*) AS c FROM transactions WHERE category_id IS NULL"
+    ).fetchone()["c"]
+    conn.close()
+    data = dict(row)
+    data["income"] = data["income"] or 0
+    data["expense"] = data["expense"] or 0
+    data["net"] = data["income"] - data["expense"]
+    data["uncategorized"] = uncategorized
+    return jsonify(data)
+
+
+@app.route("/healthz")
+def healthz():
+    return Response("ok", mimetype="text/plain")
+
+
+if __name__ == "__main__":
+    port = int(os.environ.get("MONEYMANAGER_INGRESS_PORT", "8099"))
+    app.run(host="0.0.0.0", port=port, debug=True)
