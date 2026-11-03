@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.1
+
+- Fix add-on build failure: `ghcr.io/hassio-addons/base-python:17.0.1` no longer exists; bumped base image to `20.0.0`.
+
 ## 0.1.0
 
 - Initial release.
