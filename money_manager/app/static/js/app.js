@@ -8,6 +8,7 @@
   const txLimit = 50;
   let monthlyChart = null;
   let categoryChart = null;
+  let ruleSource = null;
 
   // ---------------------------------------------------------------- tabs --
   document.querySelectorAll(".tab-btn").forEach((btn) => {
@@ -251,10 +252,16 @@
       addCell(tx.counterparty || "");
       addCell(fmtMoney(tx.amount)).className = amountClass;
       addCell("").appendChild(catSelect);
+      const actions = addCell("");
+      actions.className = "row-actions";
+      const ruleButton = document.createElement("button");
+      ruleButton.textContent = "Create rule";
+      ruleButton.addEventListener("click", () => openRuleDialog(tx));
+      actions.appendChild(ruleButton);
       const deleteButton = document.createElement("button");
       deleteButton.className = "danger";
       deleteButton.textContent = "Delete";
-      addCell("").appendChild(deleteButton);
+      actions.appendChild(deleteButton);
       deleteButton.addEventListener("click", async () => {
         if (!confirm("Delete this transaction?")) return;
         await fetch(api(`/api/transactions/${tx.id}`), { method: "DELETE" });
@@ -267,6 +274,66 @@
     document.getElementById("tx-page-info").textContent =
       `${data.total === 0 ? 0 : txOffset + 1}-${Math.min(txOffset + txLimit, data.total)} of ${data.total}`;
   }
+
+  function openRuleDialog(tx) {
+    ruleSource = tx;
+    const form = document.getElementById("rule-dialog-form");
+    form.reset();
+    document.getElementById("rule-dialog-error").textContent = "";
+    document.getElementById("rule-dialog-source").textContent =
+      `${tx.date} · ${fmtMoney(tx.amount)} · ${tx.counterparty || tx.description || tx.iban || "Transaction"}`;
+
+    const field = document.getElementById("rule-dialog-field");
+    field.value = tx.counterparty?.trim() ? "counterparty" : tx.description?.trim() ? "description" : "iban";
+    document.getElementById("rule-dialog-pattern").value = (tx[field.value] || "").trim();
+    const category = document.getElementById("rule-dialog-category");
+    category.replaceChildren(new Option("Choose a category", ""));
+    categories.forEach((item) => category.add(new Option(item.name, item.id)));
+    category.value = tx.category_id ? String(tx.category_id) : "";
+    document.getElementById("rule-dialog").showModal();
+  }
+
+  document.getElementById("rule-dialog-field").addEventListener("change", (event) => {
+    const field = event.target.value;
+    if (field !== "any") {
+      document.getElementById("rule-dialog-pattern").value = (ruleSource?.[field] || "").trim();
+    }
+  });
+  document.getElementById("rule-dialog-cancel").addEventListener("click", () => {
+    document.getElementById("rule-dialog").close();
+  });
+  document.getElementById("rule-dialog-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    if (!ruleSource) return;
+    const save = document.getElementById("rule-dialog-save");
+    const error = document.getElementById("rule-dialog-error");
+    error.textContent = "";
+    save.disabled = true;
+    try {
+      const response = await fetch(api(`/api/transactions/${ruleSource.id}/rules`), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          pattern: document.getElementById("rule-dialog-pattern").value.trim(),
+          field: document.getElementById("rule-dialog-field").value,
+          category_id: Number(document.getElementById("rule-dialog-category").value),
+          priority: Number(document.getElementById("rule-dialog-priority").value),
+          apply_existing: document.getElementById("rule-dialog-apply").checked,
+        }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Could not save rule");
+      document.getElementById("rule-dialog").close();
+      document.getElementById("tx-rule-message").textContent =
+        `Rule saved. Categorized ${result.updated} transaction(s).`;
+      await loadTransactions();
+      loadDashboard();
+    } catch (err) {
+      error.textContent = err.message;
+    } finally {
+      save.disabled = false;
+    }
+  });
 
   document.getElementById("tx-refresh").addEventListener("click", () => {
     txOffset = 0;

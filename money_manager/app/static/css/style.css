@@ -153,3 +153,31 @@ th { color: var(--muted); font-weight: 600; }
 
 .row-actions button { padding: 4px 8px; font-size: 0.78rem; }
 .row-actions .danger { background: var(--expense); color: #fff; }
+
+.row-actions { white-space: nowrap; }
+.row-actions button + button { margin-left: 5px; }
+.muted { color: var(--muted); }
+
+dialog {
+  width: min(440px, calc(100vw - 32px));
+  max-height: calc(100vh - 32px);
+  overflow: auto;
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 20px;
+}
+dialog::backdrop { background: rgba(0, 0, 0, 0.7); }
+dialog h3 { margin-top: 0; }
+dialog label { display: block; margin: 12px 0; }
+dialog label > input:not([type="checkbox"]), dialog label > select {
+  display: block;
+  width: 100%;
+  margin-top: 5px;
+}
+dialog .checkbox-label { display: flex; gap: 8px; align-items: flex-start; }
+dialog .checkbox-label input { width: auto; margin: 2px 0 0; }
+dialog .dialog-actions { display: flex; gap: 10px; justify-content: flex-end; }
+dialog .secondary { background: var(--panel-alt); color: var(--text); border: 1px solid var(--border); }
+#rule-dialog-error { color: var(--expense); }

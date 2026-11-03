@@ -14,6 +14,11 @@ Import, categorize and visualize your online banking transactions, directly from
   - Define keyword-based rules (e.g. "albert heijn" → Groceries) that are automatically applied on import.
   - Re-apply rules at any time, to uncategorized transactions only or to everything.
   - Manually override the category of any transaction from the Transactions tab.
+  - Click **Create rule** on a transaction to make a rule from its counterparty,
+    description, or IBAN. Edit the suggested match text and choose a category;
+    the selected transaction is updated immediately. Optionally categorize other
+    uncategorized matches, without changing transactions already categorized.
+    These rules apply across all accounts, including future imports.
 - **Visualize**:
   - Monthly income vs. expenses bar chart.
   - Expense breakdown by category (doughnut chart).

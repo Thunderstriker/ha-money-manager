@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.2
+
+- Add a Create rule dialog to every transaction, with suggested match text and its category preselected.
+- Optionally categorize other matching uncategorized transactions immediately, without overwriting existing manual categories.
+
 ## 0.2.1
 
 - Add an Accounts page to give each bank account a friendly display name.

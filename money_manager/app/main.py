@@ -304,6 +304,64 @@ def update_transaction(tx_id):
     return jsonify({"ok": True})
 
 
+@app.route("/api/transactions/<int:tx_id>/rules", methods=["POST"])
+def create_rule_from_transaction(tx_id):
+    """Create a matching rule and categorize this transaction in one operation.
+
+    Optionally categorize other *uncategorized* matches without changing any
+    existing manual categories. Rules apply across accounts, as usual.
+    """
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({"error": "a JSON object is required"}), 400
+    pattern = data.get("pattern")
+    field = data.get("field")
+    category_id = data.get("category_id")
+    priority = data.get("priority", 0)
+    apply_existing = data.get("apply_existing", True)
+    if not isinstance(pattern, str) or not pattern.strip():
+        return jsonify({"error": "enter a non-empty pattern"}), 400
+    pattern = pattern.strip()
+    if field not in ("description", "counterparty", "iban", "any"):
+        return jsonify({"error": "invalid match field"}), 400
+    if (not isinstance(priority, int) or isinstance(priority, bool) or
+            not isinstance(category_id, int) or isinstance(category_id, bool) or
+            not isinstance(apply_existing, bool)):
+        return jsonify({"error": "invalid category, priority, or apply_existing"}), 400
+
+    conn = db.get_db()
+    try:
+        tx = conn.execute("SELECT * FROM transactions WHERE id = ?", (tx_id,)).fetchone()
+        if tx is None:
+            return jsonify({"error": "transaction not found"}), 404
+        if not conn.execute("SELECT 1 FROM categories WHERE id = ?", (category_id,)).fetchone():
+            return jsonify({"error": "category not found"}), 400
+        rule = {"pattern": pattern, "field": field, "category_id": category_id, "priority": priority}
+        if cat_engine.categorize(dict(tx), [rule]) is None:
+            return jsonify({"error": "pattern does not match the selected transaction"}), 400
+
+        cur = conn.execute(
+            "INSERT INTO rules(pattern, field, category_id, priority) VALUES (?, ?, ?, ?)",
+            (pattern, field, category_id, priority),
+        )
+        conn.execute("UPDATE transactions SET category_id = ? WHERE id = ?", (category_id, tx_id))
+        matched = 0
+        if apply_existing:
+            for other in conn.execute(
+                "SELECT * FROM transactions WHERE category_id IS NULL AND id != ?", (tx_id,)
+            ).fetchall():
+                if cat_engine.categorize(dict(other), [rule]) is not None:
+                    conn.execute(
+                        "UPDATE transactions SET category_id = ? WHERE id = ?",
+                        (category_id, other["id"]),
+                    )
+                    matched += 1
+        conn.commit()
+        return jsonify({"id": cur.lastrowid, "updated": matched + 1}), 201
+    finally:
+        conn.close()
+
+
 @app.route("/api/transactions/<int:tx_id>", methods=["DELETE"])
 def delete_transaction(tx_id):
     conn = db.get_db()

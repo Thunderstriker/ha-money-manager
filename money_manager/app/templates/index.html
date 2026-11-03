@@ -58,6 +58,7 @@
         <button id="tx-refresh">Search</button>
         <button id="tx-apply-rules">Apply rules to uncategorized</button>
       </div>
+      <p id="tx-rule-message" role="status" aria-live="polite"></p>
       <table class="tx-table">
         <thead>
           <tr><th>Date</th><th>Account</th><th>Description</th><th>Counterparty</th><th>Amount</th><th>Category</th><th></th></tr>
@@ -148,6 +149,40 @@
       </div>
     </section>
   </main>
+
+  <dialog id="rule-dialog" aria-labelledby="rule-dialog-title">
+    <form id="rule-dialog-form">
+      <h3 id="rule-dialog-title">Create rule from transaction</h3>
+      <p id="rule-dialog-source" class="muted"></p>
+      <label>Match field
+        <select id="rule-dialog-field" required>
+          <option value="counterparty">Counterparty</option>
+          <option value="description">Description</option>
+          <option value="iban">IBAN</option>
+          <option value="any">Any field</option>
+        </select>
+      </label>
+      <label>Contains text
+        <input id="rule-dialog-pattern" type="text" required placeholder="A recognizable merchant or keyword" />
+      </label>
+      <label>Category
+        <select id="rule-dialog-category" required></select>
+      </label>
+      <label>Priority (lower number wins)
+        <input id="rule-dialog-priority" type="number" value="0" required />
+      </label>
+      <label class="checkbox-label">
+        <input id="rule-dialog-apply" type="checkbox" checked />
+        Also categorize other matching uncategorized transactions
+      </label>
+      <p class="muted">The selected transaction will be categorized now. The rule applies across all accounts on future imports. Existing manual categories won't change.</p>
+      <p id="rule-dialog-error" role="alert"></p>
+      <div class="dialog-actions">
+        <button type="button" id="rule-dialog-cancel" class="secondary">Cancel</button>
+        <button type="submit" id="rule-dialog-save">Save rule</button>
+      </div>
+    </form>
+  </dialog>
 
   <script src="{{ ingress_path }}/static/js/chart.umd.js"></script>
   <script src="{{ ingress_path }}/static/js/app.js"></script>
